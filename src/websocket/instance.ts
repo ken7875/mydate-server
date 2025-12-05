@@ -1,0 +1,274 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { WebSocket, WebSocketServer } from 'ws';
+import type { CustomWebsocket } from './types';
+import { toBuffer } from '@/utils/dataTransfer';
+import http from 'http';
+import jwt from 'jsonwebtoken';
+import url from 'url';
+// import { fileTypeFromBuffer } from 'file-type';
+
+const portMap = {
+  stream: 3002,
+};
+
+// 用extends擴充video websocket
+class WebsocketInstance {
+  private wss: WebSocketServer;
+  private path: string;
+  #messageDeps: Map<string, ((...args: any[]) => any)[]>;
+  // private clients: Map<string, any>;
+  private server: http.Server | null;
+  private waitClientHeartBeatTimeout: number | null;
+  clientsMap: Map<string, CustomWebsocket>;
+
+  constructor(server: http.Server | null, path: string) {
+    this.path = path;
+    this.#messageDeps = new Map();
+    this.server = server;
+    // host: '0.0.0.0'
+    const websocketServerOption: {
+      path: string;
+      noServer: boolean;
+      host: string;
+      port?: number;
+    } = {
+      path,
+      host: '0.0.0.0',
+      noServer: server ? true : false,
+    };
+    if (!server) {
+      websocketServerOption.port =
+        portMap[path.split('/')[1] as keyof typeof portMap];
+    }
+
+    this.wss = new WebSocketServer(websocketServerOption);
+    this.waitClientHeartBeatTimeout = null;
+    this.clientsMap = new Map();
+  }
+
+  private async verifyToken(token: string): Promise<any> {
+    // const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET as string);
+    const decoded = await jwt.verify(token, process.env.JWT_SECRET as string);
+    return decoded;
+  }
+
+  // setTime(data: any[]) {
+  //   data;
+  // }
+
+  get messageDeps() {
+    return this.#messageDeps;
+  }
+
+  init() {
+    if (!this.server) return;
+
+    this.server.on('upgrade', async (request, socket, head) => {
+      try {
+        this.wss.handleUpgrade(request, socket, head, (ws) => {
+          this.wss.emit('connection', ws, request);
+        });
+      } catch (error) {
+        socket.destroy();
+      }
+    });
+  }
+
+  onListener(ws: CustomWebsocket) {
+    this.onmessage(ws);
+    this.onclose(ws);
+  }
+
+  baseConnect() {
+    return new Promise<CustomWebsocket>((resolve, reject) => {
+      this.wss.on('connection', async (ws: CustomWebsocket, request) => {
+        ws.binaryType = 'nodebuffer';
+        const { query } = url.parse(request.url!, true);
+        const token = query.token as string;
+        try {
+          const decoded = await this.verifyToken(token);
+          if (!token || !decoded) {
+            ws.send('Authentication failed!');
+            return;
+          }
+          this.clientsMap.set(decoded.uuid, ws);
+          ws.uuid = decoded.uuid;
+          this.onListener(ws);
+          const messageBuffer = toBuffer({
+            type: 'global',
+            data: `${this.path} connect success!!`,
+            code: 'SUCCESS',
+          });
+          ws.send(messageBuffer);
+          resolve(ws);
+        } catch (error) {
+          console.log(error, 'websocket token valid failed!!');
+          const messageBuffer = toBuffer({
+            type: 'global',
+            data: 'Authentication failed!',
+            code: 'UNAUTHORIZATION',
+          });
+          console.log('Authentication failed:', error);
+          reject(`user id ${ws.uuid} Authentication failed`);
+          ws.send(messageBuffer);
+          ws.close();
+          // socket.write( // not work
+          //   'HTTP/1.1 401 Unauthorized\r\n' +
+          //   'Content-Type: application/json\r\n' +
+          //   'Connection: close\r\n' +
+          //   '\r\n' +
+          //   JSON.stringify({ message: 'Token is invalid or expired' })
+          // );
+        }
+      });
+    });
+  }
+
+  onconnect() {
+    this.baseConnect();
+  }
+
+  onclose(ws: CustomWebsocket) {
+    ws.on('close', () => {
+      console.log(ws.uuid, 'onclose uuid');
+      this.clientsMap.delete(ws.uuid);
+    });
+  }
+
+  onmessage(ws: CustomWebsocket) {
+    //對 message 設定監聽，接收從 Client 發送的訊息
+    ws.on('message', async (data: Buffer) => {
+      if (data.toString() === 'ping') {
+        ws.send('pong');
+        // this.closeIfNoHeartBeat(ws)
+
+        return;
+      }
+
+      // TODO 處理未知type類型
+      // TODO 避免重複傳資料給自己
+      try {
+        if (!Buffer.isBuffer(data)) {
+          const errorRes = Buffer.from(
+            JSON.stringify({
+              type: 'error',
+              code: 'INVALID_PAYLOAD',
+              message: 'Payload 格式不正確',
+            }),
+          );
+          ws.send(errorRes);
+          return;
+        }
+
+        const parseData = JSON.parse(data.toString());
+        // this.broadcast(data);
+
+        if (parseData.type) {
+          this.notify({
+            type: parseData.type,
+            data: parseData.data,
+            uuid: ws.uuid,
+          });
+        }
+      } catch (error) {
+        console.log(error, 'not valid websocket message');
+      }
+    });
+  }
+
+  closeSingleConnect(ws: CustomWebsocket) {
+    ws.close();
+  }
+
+  handleClose(code = 1001) {
+    this.wss.clients.forEach((ws) => {
+      ws.close(code, 'close connect');
+    });
+    this.wss.close();
+  }
+
+  broadcast(message: Buffer, sendIds?: string[]): void {
+    if (!sendIds) {
+      this.wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(message);
+        }
+      });
+    } else {
+      this.clientsMap.forEach((client, uuid) => {
+        if (sendIds.includes(uuid)) {
+          client.send(message);
+        }
+      });
+    }
+  }
+
+  notifySpecifyUser(
+    uuid: string,
+    message: { type: string; data: any; code: string },
+  ) {
+    if (!message) {
+      console.log('message not defined!!!');
+      return;
+    }
+
+    const client = this.clientsMap.get(uuid);
+    const msgToString = JSON.stringify(message);
+    const messageToBuffer = Buffer.from(msgToString);
+    client?.send?.(messageToBuffer);
+  }
+
+  // TODO 獨立成訂閱者模式工具
+  subscribe({
+    type,
+    fnAry,
+  }: {
+    type: string;
+    fnAry: ((...args: any[]) => any)[];
+  }) {
+    if (!this.#messageDeps.has(type)) {
+      this.#messageDeps.set(type, []);
+    }
+
+    const deps = this.#messageDeps.get(type);
+    deps?.push(...fnAry);
+  }
+
+  // TODO 獨立成訂閱者模式工具
+  notify({
+    type,
+    data,
+    uuid,
+  }: {
+    type: string;
+    data: string | Blob | Buffer;
+    uuid: string;
+  }) {
+    if (!this.#messageDeps.has(type)) {
+      console.error(
+        `easy-booking-websocket: you do not have subscribe type **${type}**!!`,
+      );
+
+      return;
+    }
+
+    const deps = this.#messageDeps.get(type);
+    deps?.forEach((fn) => {
+      fn({ data, uuid });
+    });
+  }
+
+  resetHeartBeatTimer() {
+    clearTimeout(this.waitClientHeartBeatTimeout!);
+  }
+
+  closeIfNoHeartBeat(ws: CustomWebsocket) {
+    this.resetHeartBeatTimer();
+
+    this.waitClientHeartBeatTimeout = setTimeout(() => {
+      this.closeSingleConnect(ws);
+    }, 5000) as unknown as number;
+  }
+}
+
+export default WebsocketInstance;

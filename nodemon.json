@@ -1,0 +1,5 @@
+{
+  "watch": ["src"],
+  "ignore": ["public/source-m3u8/*"],
+  "ext": "ts,js,json"
+}

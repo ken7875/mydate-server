@@ -1,0 +1,59 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/typescript-node
+{
+	"name": "Node.js & TypeScript",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+	// "dockerComposeFile": [
+	// 	"../docker-compose.yml",
+	// 	"docker-compose.yml"
+	// ],
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	"forwardPorts": [
+		3000
+	],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	"postCreateCommand": "yarn install && yarn cache clean",
+
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"eslint.validate": [
+					"javascript",
+					"javascriptreact",
+					"typescript",
+					"typescriptreact",
+					"vue"
+				],
+				"editor.codeActionsOnSave": {
+					"source.fixAll.eslint": true
+				},
+				"[javascript]": {
+					"editor.defaultFormatter": "esbenp.prettier-vscode"
+				},
+				"[json]": {
+					"editor.defaultFormatter": "vscode.json-language-features"
+				},
+			 	"files.eol": "\n"
+			},
+			"extensions": [
+				"Gruntfuggly.todo-tree",
+				"mikestead.dotenv",
+				"oderwat.indent-rainbow",
+				"eamodio.gitlens",
+				"dbaeumer.vscode-eslint",
+				"esbenp.prettier-vscode",
+				"rvest.vs-code-prettier-eslint"
+			]
+		}
+	}
+
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}

@@ -1,0 +1,6 @@
+# Node dependencies
+node_modules
+
+dist
+# Local env files
+*.env.*

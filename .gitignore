@@ -1,0 +1,17 @@
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+dist
+
+# Environment variables
+.env*
+*.env
+build.sh
