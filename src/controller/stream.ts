@@ -2,7 +2,6 @@ import Users from '@/model/authModel';
 // import jwt from 'jsonwebtoken';
 import { errorHandler } from '@/utils/errorHandler';
 import { catchAsyncController } from '@/utils/catchAsync';
-// import ffmpegTool from '@/utils/ffmpeg';
 // import redis from '@/config/redis';
 import moment from 'moment';
 import { WebSocketServer } from '@/server';

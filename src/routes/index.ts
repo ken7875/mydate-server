@@ -4,7 +4,7 @@ import user from './usersRoutes';
 import friend from './friendRoutes';
 import message from './messageRoute';
 import express from 'express';
-import stream from './streamRoutes';
+import stream from './streamRoomRoutes';
 
 const router = express.Router();
 

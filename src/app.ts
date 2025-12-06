@@ -1,7 +1,7 @@
 import express from 'express';
 import routes from '@/routes/index';
 import { errorHandler } from '@/utils/errorHandler';
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -10,11 +10,12 @@ const corsConfig =
   process.env.NODE_ENV === 'production'
     ? {
         origin: [process.env.FRONT_END_HOST as string, 'http://0.0.0.0:3000'],
-        credentials: true,
+        // credentials: true,
       }
     : {
-        origin: [process.env.FRONT_END_HOST as string],
-        credentials: true,
+        origin: '*',
+        // origin: [process.env.FRONT_END_HOST as string],
+        // credentials: true,
       };
 
 const app = express();
@@ -38,7 +39,7 @@ app.all('*', (req, res) => {
   });
 });
 
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+app.use((err: any, req: Request, res: Response) => {
   res.json({
     status: err.status,
     code: err.code,

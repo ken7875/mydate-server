@@ -10,6 +10,8 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 import app from './app';
+import appStream from '@/streamApp';
+
 import { baseWebsocket, streamWebsocket } from './websocket/server';
 import {
   subscribeWebsocketOnmessageHandler,
@@ -17,15 +19,20 @@ import {
 } from '@/websocket/subscriber';
 
 const port = 3001;
+const streamPort = 3002;
 export const server = app.listen(port, '0.0.0.0', () => {
   console.log(`the server is listen on ${port}`);
+});
+
+export const StreamServer = appStream.listen(streamPort, '0.0.0.0', () => {
+  console.log(`the server is listen on ${streamPort}`);
 });
 
 export const WebSocketServer = baseWebsocket(server, '/');
 subscribeWebsocketOnmessageHandler(WebSocketServer);
 
 //直播websocket
-export const streamWebSocketServer = streamWebsocket(null, '/stream');
+export const streamWebSocketServer = streamWebsocket(StreamServer, '/stream');
 subscribeStreamWebsocketOnmessageHandler(streamWebSocketServer);
 
 WebSocketServer.init();

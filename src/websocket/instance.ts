@@ -7,10 +7,6 @@ import jwt from 'jsonwebtoken';
 import url from 'url';
 // import { fileTypeFromBuffer } from 'file-type';
 
-const portMap = {
-  stream: 3002,
-};
-
 // 用extends擴充video websocket
 class WebsocketInstance {
   private wss: WebSocketServer;
@@ -36,10 +32,6 @@ class WebsocketInstance {
       host: '0.0.0.0',
       noServer: server ? true : false,
     };
-    if (!server) {
-      websocketServerOption.port =
-        portMap[path.split('/')[1] as keyof typeof portMap];
-    }
 
     this.wss = new WebSocketServer(websocketServerOption);
     this.waitClientHeartBeatTimeout = null;
@@ -191,13 +183,13 @@ class WebsocketInstance {
     if (!sendIds) {
       this.wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
-          client.send(message);
+          // client.send(message);
         }
       });
     } else {
       this.clientsMap.forEach((client, uuid) => {
         if (sendIds.includes(uuid)) {
-          client.send(message);
+          // client.send(message);
         }
       });
     }

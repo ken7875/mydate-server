@@ -33,3 +33,37 @@ const sqlConnectTest = async () => {
 sqlConnectTest();
 
 export default sequelize;
+
+// const access: ConnectionOptions = {
+//   host: 'bhz7pvkreijcbfw6rbpy-mysql.services.clever-cloud.com',
+//   user: 'u0zzt1ffgxwlalum',
+//   password: 'qL3UPDRrwlxprPWS8kh6',
+//   database: 'bhz7pvkreijcbfw6rbpy',
+//   port: 3306
+// };
+
+// const connection = mysql.createPool(access);
+// type SqlValues<T> = T | SqlValues<T>[];
+// const connectHandler = async <T>(query: string, values?: SqlValues<string | number | boolean>) => {
+//   const connect = new Promise((resolve, reject) => {
+//     // For pool initialization, see above
+//     connection.getConnection((err, conn) => {
+//       if (err) {
+//         reject(new AppError(`sql err: ${err}`, 500));
+//       } else {
+//         // Do something with the connection
+//         conn.query(query, values, (err, rows) => {
+//           if (err) {
+//             reject(new AppError(`sql err: ${err}`, 500));
+//           } else {
+//             resolve(rows);
+//           }
+//           // Don't forget to release the connection when finished!
+//           connection.releaseConnection(conn);
+//         });
+//       }
+//     });
+//   });
+
+//   return connect as Promise<T>;
+// };
