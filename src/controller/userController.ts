@@ -70,8 +70,10 @@ export const getUserByCondition = catchAsyncController(
       },
     });
 
+    // 找出所有好友
     const friendsUUID = new Set();
     friendList.forEach((friend) => {
+      // 好友列表內不包含自己的資料
       if (friend.dataValues.userId !== userUUID)
         friendsUUID.add(friend.dataValues.userId);
       if (friend.dataValues.friendId !== userUUID)
@@ -109,23 +111,14 @@ export const getUserByCondition = catchAsyncController(
       limit: Number(limit), // 只取25筆
     });
 
-    // TODO for test
-    // const usercc = await Users.findOne({
-    //   where: {
-    //     uuid: '1181516f-28a9-4337-8d47-e132d12b8316'
-    //   }
-    // })
-    // users.unshift(usercc!)
-    setTimeout(() => {
-      res.status(200).json({
-        status: 'success',
-        message: 'success',
-        code: 200,
-        data: {
-          list: users,
-        },
-      });
-    }, 2000);
+    res.status(200).json({
+      status: 'success',
+      message: 'success',
+      code: 200,
+      data: {
+        list: users,
+      },
+    });
   },
 );
 

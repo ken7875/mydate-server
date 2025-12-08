@@ -8,9 +8,9 @@ import Users from '@/model/authModel';
 import { Request, Response } from 'express';
 import { catchAsyncController } from '@/utils/catchAsync';
 import { ValidationError } from 'sequelize';
-import { WebSocketServer } from '@/server';
 import { FriendStatus } from '@/enums/friends';
 import { Op } from 'sequelize';
+import { WebSocketServer } from '@/server';
 
 // Friendship.truncate({ cascade: true });
 // 好友系統相關函數
@@ -23,8 +23,9 @@ const createFriend = async ({
   friendId: string;
   status: FriendStatus;
 }) => await Friendship.create({ userId, friendId, status });
+
 // invite friends
-export const inviteFriends = catchAsyncController(
+export const inviteFriend = catchAsyncController(
   async (req: Request, res: Response) => {
     const { friendId, status }: { friendId: string; status: FriendStatus } =
       req.body;
@@ -62,10 +63,11 @@ export const inviteFriends = catchAsyncController(
         },
       });
 
-      WebSocketServer.notifySpecifyUser(friendId, {
-        type: 'inviteFriend',
+      WebSocketServer.sendToSpecifyUser({
         data: { ...userData?.dataValues, status },
         code: 'SUCCESS',
+        type: 'inviteFriend',
+        uuid: [friendId],
       });
     } catch (error) {
       if (
@@ -110,27 +112,6 @@ export const dislikeUser = catchAsyncController(
     });
   },
 );
-
-// TODO 新增加好友功能, 若friend資料庫已有userid存在找出該user設定當前好友狀態, 若沒有userid則建立一個user並加入好友
-// 主動加好友或是被加好友的人都有可能不存在資料庫中, 所以都要判斷到底是要用setFriendStatus還是addNewUserAndSetFriends
-// export const addNewUserAndSetFriends = catchAsyncController(async (req: Request, res: Response) => {
-//   const { friendId } = req.params
-//   await Friendship.create({
-//     userId: req.user?.uuid,
-//     friendId: friendId
-//   })
-//   const user = await Users.findOne({
-//     where: req.user?.uuid
-//   })
-//   console.log(user?.sentRequests?.(), 'send')
-//   console.log(user?.receivedRequests?.(), 'received')
-
-//   res.status(200).json({
-//     status: 'success',
-//     message: "invite friend success!!",
-//     code: 200
-//   })
-// })
 
 // 設定好友狀態
 export const setFriendStatus = catchAsyncController(
@@ -188,10 +169,11 @@ export const setFriendStatus = catchAsyncController(
       },
     });
 
-    WebSocketServer.notifySpecifyUser(friendId, {
-      type: 'setFriendStatus',
+    WebSocketServer.sendToSpecifyUser({
       data: { ...userData?.dataValues, status },
+      type: 'setFriendStatus',
       code: 'SUCCESS',
+      uuid: [friendId],
     });
 
     if (!friendData) {

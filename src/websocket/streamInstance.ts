@@ -19,17 +19,19 @@ export default class StreamWebsocket extends WebsocketInstance {
     // 處理前端用戶手動關閉直播
     try {
       this.closeStreamHandler(ws);
-      this.notifySpecifyUser(ws.uuid, {
-        type: 'closeVideo',
+      this.sendToSpecifyUser({
         data: '成功關閉直播',
         code: 'SUCCESS',
+        type: 'closeVideo',
+        uuid: [ws.uuid],
       });
       ws.close();
     } catch (error) {
-      this.notifySpecifyUser(ws.uuid, {
-        type: 'closeVideo',
+      this.sendToSpecifyUser({
         data: '直播關閉失敗',
         code: 'FAIL',
+        type: 'closeVideo',
+        uuid: [ws.uuid],
       });
     }
   }

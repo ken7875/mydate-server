@@ -30,10 +30,13 @@ const roomBoardcast = <T>({
   const audiences = [...WebSocketServer.clientsMap.keys()].filter(
     (clientId) => clientId !== uuid,
   );
-  WebSocketServer.broadcast(
-    Buffer.from(JSON.stringify({ type, data })),
-    audiences,
-  );
+
+  WebSocketServer.sendToSpecifyUser({
+    data,
+    code: 'SUCCESS',
+    type,
+    uuid: audiences,
+  });
 };
 
 // const getAllRoomInRedis = async () => {

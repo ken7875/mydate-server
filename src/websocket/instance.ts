@@ -32,7 +32,6 @@ class WebsocketInstance {
       host: '0.0.0.0',
       noServer: server ? true : false,
     };
-
     this.wss = new WebSocketServer(websocketServerOption);
     this.waitClientHeartBeatTimeout = null;
     this.clientsMap = new Map();
@@ -76,7 +75,7 @@ class WebsocketInstance {
       this.wss.on('connection', async (ws: CustomWebsocket, request) => {
         ws.binaryType = 'nodebuffer';
         const { query } = url.parse(request.url!, true);
-        const token = query.token as string;
+        const token = query?.token as string;
         try {
           const decoded = await this.verifyToken(token);
           if (!token || !decoded) {
@@ -153,7 +152,6 @@ class WebsocketInstance {
         }
 
         const parseData = JSON.parse(data.toString());
-        // this.broadcast(data);
 
         if (parseData.type) {
           this.notify({
@@ -179,35 +177,39 @@ class WebsocketInstance {
     this.wss.close();
   }
 
-  broadcast(message: Buffer, sendIds?: string[]): void {
-    if (!sendIds) {
-      this.wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          // client.send(message);
-        }
-      });
-    } else {
-      this.clientsMap.forEach((client, uuid) => {
-        if (sendIds.includes(uuid)) {
-          // client.send(message);
-        }
-      });
-    }
+  sendToAllUser(message: Buffer): void {
+    this.wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
   }
 
-  notifySpecifyUser(
-    uuid: string,
-    message: { type: string; data: any; code: string },
-  ) {
-    if (!message) {
-      console.log('message not defined!!!');
+  sendToSpecifyUser({
+    uuid,
+    data,
+    type,
+    code,
+  }: {
+    uuid: string[];
+    data: any;
+    type: string;
+    code: string;
+  }) {
+    if (!data) {
+      console.log('data not defined!!!');
       return;
     }
 
-    const client = this.clientsMap.get(uuid);
-    const msgToString = JSON.stringify(message);
+    const msgToString = JSON.stringify({ data, type, code });
     const messageToBuffer = Buffer.from(msgToString);
-    client?.send?.(messageToBuffer);
+
+    uuid.forEach((clientId) => {
+      const client = this.clientsMap.get(clientId);
+      if (!client) return;
+      console.log(`send to ${uuid}`, data);
+      client.send(messageToBuffer);
+    });
   }
 
   // TODO 獨立成訂閱者模式工具
@@ -227,15 +229,7 @@ class WebsocketInstance {
   }
 
   // TODO 獨立成訂閱者模式工具
-  notify({
-    type,
-    data,
-    uuid,
-  }: {
-    type: string;
-    data: string | Blob | Buffer;
-    uuid: string;
-  }) {
+  notify({ type, data, uuid }: { type: string; data: any; uuid: string }) {
     if (!this.#messageDeps.has(type)) {
       console.error(
         `easy-booking-websocket: you do not have subscribe type **${type}**!!`,

@@ -32,11 +32,12 @@ export const WebSocketServer = baseWebsocket(server, '/');
 subscribeWebsocketOnmessageHandler(WebSocketServer);
 
 //直播websocket
-export const streamWebSocketServer = streamWebsocket(StreamServer, '/stream');
+export const streamWebSocketServer = streamWebsocket(StreamServer, '/');
 subscribeStreamWebsocketOnmessageHandler(streamWebSocketServer);
 
 WebSocketServer.init();
 WebSocketServer.onconnect();
+streamWebSocketServer.init();
 streamWebSocketServer.onconnect();
 
 const handleUncaughtExceptionOrRejection = (err: Error) => {

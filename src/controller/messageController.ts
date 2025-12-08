@@ -7,6 +7,8 @@ import moment from 'moment';
 import sequelize from '../config/mysql';
 import { Op, QueryTypes } from 'sequelize';
 import { errorHandler } from '@/utils/errorHandler';
+import { CustomWebsocket } from '@/websocket/types';
+import { WebSocketServer } from '@/server';
 
 export const getMessage = catchAsyncController(async (req, res) => {
   const { senderId, receiverId, page = 1, pageSize = 100 } = req.query;
@@ -54,6 +56,12 @@ export const setMessage = async ({
     }));
 
     await Message.bulkCreate(filterNeedData);
+    WebSocketServer.sendToSpecifyUser({
+      uuid: messageData.map((data) => data.receiverId),
+      data: messageData,
+      type: 'chatRoom',
+      code: 'SUCCESS',
+    });
   } catch (error) {
     console.log(error);
   }
