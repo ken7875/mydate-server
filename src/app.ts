@@ -1,5 +1,5 @@
 import express from 'express';
-import routes from '@/routes/index';
+import { router } from '@/routes/index';
 import { errorHandler } from '@/utils/errorHandler';
 import { Request, Response } from 'express';
 import helmet from 'helmet';
@@ -24,11 +24,12 @@ app.options('*', cors(corsConfig));
 app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
 app.use(helmet());
-app.use('/api', routes);
+app.use('/api', router);
 
 // 將 public 資料夾設置為靜態資源
 app.use('/public', express.static('public'));
 app.all('*', (req, res) => {
+  console.log('HOST:', req.headers.host);
   errorHandler({
     res,
     info: {

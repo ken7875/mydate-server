@@ -28,11 +28,11 @@ export const StreamServer = appStream.listen(streamPort, '0.0.0.0', () => {
   console.log(`the server is listen on ${streamPort}`);
 });
 
-export const WebSocketServer = baseWebsocket(server, '/');
+export const WebSocketServer = baseWebsocket(server, '/notificationWs');
 subscribeWebsocketOnmessageHandler(WebSocketServer);
 
 //直播websocket
-export const streamWebSocketServer = streamWebsocket(StreamServer, '/');
+export const streamWebSocketServer = streamWebsocket(StreamServer, '/streamWs');
 subscribeStreamWebsocketOnmessageHandler(streamWebSocketServer);
 
 WebSocketServer.init();

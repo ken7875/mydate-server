@@ -13,6 +13,8 @@ router.use('/auth', auth);
 router.use('/user', user);
 router.use('/friends', friend);
 router.use('/message', message);
-router.use('/stream', stream);
 
-export default router;
+const streamRouter = express.Router();
+streamRouter.use('/stream', stream);
+
+export { router, streamRouter };

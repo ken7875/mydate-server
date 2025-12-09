@@ -20,17 +20,19 @@ WORKDIR /usr/src/app
 # 建立非 root 使用者（安全性）
 RUN useradd --user-group --create-home --shell /bin/false appuser
 
-ARG NODE_ENV='development'
+ARG NODE_ENV='production'
 ENV NODE_ENV=${NODE_ENV}
 
 COPY package.json yarn.lock ./
 RUN yarn install --production --frozen-lockfile
-
+RUN yarn global add pm2
 COPY --from=build /usr/src/app/dist ./dist
 COPY --from=build /usr/src/app/public ./public
 
 # 切換到非 root 使用者
 USER appuser
 
-EXPOSE 3001
-CMD ["node", "dist/server.js"]
+# EXPOSE 3001
+# EXPOSE 3002
+# CMD ["node", "dist/server.js"]
+CMD ["pm2-runtime", "dist/server.js"]

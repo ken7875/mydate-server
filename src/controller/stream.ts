@@ -189,6 +189,7 @@ export const createStreamRoom = catchAsyncController(async (req, res) => {
     startTime: moment().format('YYYY-MM-DD HH:mm:ss'),
   };
 
+  // 已交由stream server處理
   Ffmpeg.start(req?.user?.uuid);
 
   // setRoomInRedis
