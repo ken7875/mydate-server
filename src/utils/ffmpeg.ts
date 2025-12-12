@@ -56,7 +56,7 @@ function start(uuid: string) {
       '-s 640x360',
 
       // --- HLS low-latency ---
-      '-hls_time 3', // 影片長度3秒
+      '-hls_time 4', // 影片長度4秒
       '-hls_list_size 6', // 只保留6個檔案
       // -hls_flags delete_segments自動刪除舊檔案
       // +append_list HLS playlist 以追加方式寫入，避免重複寫整份清單。

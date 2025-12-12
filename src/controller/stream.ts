@@ -110,7 +110,8 @@ const isReady = async (m3u8Folder: string) => {
     const files = await fsPromises.readdir(m3u8Folder);
     const tsFiles = files.filter((f) => f.endsWith('.ts'));
 
-    if (tsFiles.length >= 2) {
+    // 前端設定會從第三段開始播放, 所以延後三個檔案開始, 確保前端一定可以抓到segment
+    if (tsFiles.length >= 3) {
       return true; // 表示已廣播
     }
     return false; // 表示尚未廣播
