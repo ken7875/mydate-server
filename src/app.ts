@@ -25,6 +25,16 @@ app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
 app.use(helmet());
 app.use('/api', router);
+app.use('/version', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'add friend success',
+    code: 200,
+    data: {
+      data: 2,
+    },
+  });
+});
 
 // 將 public 資料夾設置為靜態資源
 app.use('/public', express.static('public'));

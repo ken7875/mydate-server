@@ -229,6 +229,7 @@ class WebsocketInstance {
   }
 
   // TODO 獨立成訂閱者模式工具
+  // 通知有訂閱的function
   notify({ type, data, uuid }: { type: string; data: any; uuid: string }) {
     if (!this.#messageDeps.has(type)) {
       console.error(

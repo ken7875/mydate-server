@@ -18,7 +18,7 @@ interface StreamRoomData {
   startTime: string;
 }
 
-const roomBoardcast = <T>({
+const operateRoomBroadcast = <T>({
   data,
   uuid,
   type,
@@ -105,16 +105,12 @@ const createRoomDataInDb = async (data: StreamRoomData) => {
   return room;
 };
 
-const checkAndBroadcastRoom = async (
-  m3u8Folder: string,
-  broadcastData: { data: StreamRoomData; type: string; uuid: string },
-) => {
+const isReady = async (m3u8Folder: string) => {
   try {
     const files = await fsPromises.readdir(m3u8Folder);
     const tsFiles = files.filter((f) => f.endsWith('.ts'));
 
     if (tsFiles.length >= 2) {
-      roomBoardcast(broadcastData);
       return true; // 表示已廣播
     }
     return false; // 表示尚未廣播
@@ -125,23 +121,59 @@ const checkAndBroadcastRoom = async (
   }
 };
 
+/**
+ * 設定方間狀態並回傳給前端
+ * @param uuid 房間io
+ */
+const setRoomStatusToReadyAndNotifyClient = async (uuid: string) => {
+  await RoomModel.update(
+    {
+      status: true,
+    },
+    {
+      where: {
+        uuid,
+      },
+    },
+  );
+
+  const audiences = [...WebSocketServer.clientsMap.keys()].filter(
+    (clientId) => clientId !== uuid,
+  );
+
+  console.log('set room status to Ready!!');
+
+  WebSocketServer.sendToSpecifyUser({
+    uuid: audiences,
+    data: {
+      uuid,
+      status: true,
+    },
+    type: 'streamRoomStatus',
+    code: 'SUCCESS',
+  });
+};
+
 let watcher: FSWatcher | null = null;
-const waitForHlsAndBroadcast = async (
-  m3u8Folder: string,
-  broadcastData: { data: StreamRoomData; type: string; uuid: string },
-) => {
-  const isReady = await checkAndBroadcastRoom(m3u8Folder, broadcastData);
-  if (isReady) {
+const checkHlsReady = async (m3u8Folder: string, uuid: string) => {
+  const done = await isReady(m3u8Folder);
+  if (done) {
+    setRoomStatusToReadyAndNotifyClient(uuid);
     return;
   }
 
   // 如果尚未準備好，則設定監聽器
-  watcher = watch(m3u8Folder, async (eventType) => {
-    if (eventType === 'rename') {
-      const done = await checkAndBroadcastRoom(m3u8Folder, broadcastData);
-      if (done) {
-        watcher?.close?.();
-      }
+  let timer: NodeJS.Timeout | null = null;
+  watcher = watch(m3u8Folder, async (eventType, filename) => {
+    if (filename === 'output.m3u8' && eventType === 'rename') {
+      clearTimeout(timer!);
+      timer = setTimeout(async () => {
+        const done = await isReady(m3u8Folder);
+        if (done) {
+          setRoomStatusToReadyAndNotifyClient(uuid);
+          watcher?.close?.();
+        }
+      }, 100);
     }
   });
 };
@@ -202,11 +234,12 @@ export const createStreamRoom = catchAsyncController(async (req, res) => {
   );
 
   // 將檢查與廣播邏輯移交給非同步函式，不阻塞當前請求的回應
-  waitForHlsAndBroadcast(m3u8Folder, {
+  operateRoomBroadcast({
     data,
     type: 'addRoom',
     uuid,
   });
+  checkHlsReady(m3u8Folder, uuid);
 
   res.status(200).json({
     status: 'success',
@@ -257,7 +290,7 @@ const deleteRoomInMySql = async (uuid: string) => {
 
     await deleteHlsFolder(uuid);
 
-    roomBoardcast<{ uuid: string }>({
+    operateRoomBroadcast<{ uuid: string }>({
       data: { uuid },
       type: 'deleteRoom',
       uuid,

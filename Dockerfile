@@ -4,6 +4,7 @@ WORKDIR /usr/src/app
 
 RUN apt-get update && apt-get install -y \
     make \
+    curl \
     g++ \
     bash
 
@@ -16,6 +17,11 @@ RUN yarn run build
 # ====== Stage 2: production runtime ======
 FROM node:lts-slim AS production
 WORKDIR /usr/src/app
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl bash && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # 建立非 root 使用者（安全性）
 RUN useradd --user-group --create-home --shell /bin/false appuser

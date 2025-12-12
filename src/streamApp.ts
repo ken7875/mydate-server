@@ -28,6 +28,11 @@ app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
 app.use(helmet());
 app.use('/streamApi', streamRouter);
+// app.use('/public', (req, res, next) => {
+//   console.log('/public');
+//   next();
+// });
+app.use('/public', express.static('public'));
 
 // app.post(
 //   '/api/stream/start',
@@ -82,9 +87,6 @@ app.use('/streamApi', streamRouter);
 //     code: 200,
 //   });
 // });
-
-// 將 public 資料夾設置為靜態資源
-app.use('/public', express.static('public'));
 
 app.all('*', (req, res) => {
   errorHandler({

@@ -56,8 +56,11 @@ function start(uuid: string) {
       '-s 640x360',
 
       // --- HLS low-latency ---
-      '-hls_time 1',
-      '-hls_list_size 6',
+      '-hls_time 3', // 影片長度3秒
+      '-hls_list_size 6', // 只保留6個檔案
+      // -hls_flags delete_segments自動刪除舊檔案
+      // +append_list HLS playlist 以追加方式寫入，避免重複寫整份清單。
+      // +program_date_time 在每個片段前寫入絕對時間戳（ISO 日期格式）
       '-hls_flags delete_segments+append_list+program_date_time+independent_segments',
       // '-hls_start_number_source epoch',
       '-f hls',
