@@ -302,6 +302,49 @@ const deleteRoomInMySql = async (uuid: string) => {
   }
 };
 
+export const getRoom = catchAsyncController(async (req, res) => {
+  const { uuid } = req.params;
+
+  if (!uuid) {
+    errorHandler({
+      res,
+      info: {
+        code: 400,
+        message: '沒有這個用戶',
+      },
+      sendType: 'json',
+    });
+
+    return;
+  }
+
+  const room = await RoomModel.findOne({
+    where: {
+      uuid,
+    },
+  });
+
+  if (!room) {
+    errorHandler({
+      res,
+      info: {
+        code: 400,
+        message: '沒有這個房間',
+      },
+      sendType: 'json',
+    });
+
+    return;
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'add friend success',
+    code: 200,
+    data: room,
+  });
+});
+
 export const closeStream = async (uuid: string) => {
   await deleteRoomInMySql(uuid);
 };

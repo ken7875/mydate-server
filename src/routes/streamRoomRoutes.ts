@@ -1,6 +1,6 @@
 // import 'module-alias/register';
 import express from 'express';
-import { createStreamRoom, getAllRoom } from '@/controller/stream';
+import { createStreamRoom, getAllRoom, getRoom } from '@/controller/stream';
 import { verifyToken } from '@/controller/authController';
 
 // import { setCode, veriyfyCodeHandler, sendVcodeToMail } from '@/controller/registerCodeController'
@@ -8,6 +8,7 @@ import { verifyToken } from '@/controller/authController';
 const router = express.Router();
 
 router.get('/getRooms', verifyToken, getAllRoom);
+router.get('/getRoom/:uuid', verifyToken, getRoom);
 router.post('/createRoom', verifyToken, createStreamRoom);
 // router.get('/close', verifyToken, closeStream);
 
