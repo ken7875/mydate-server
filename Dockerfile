@@ -18,13 +18,12 @@ RUN yarn run build
 FROM node:lts-slim AS production
 WORKDIR /usr/src/app
 
+USER root
+
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y curl bash && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# 建立非 root 使用者（安全性）
-RUN useradd --user-group --create-home --shell /bin/false appuser
 
 ARG NODE_ENV='production'
 ENV NODE_ENV=${NODE_ENV}
@@ -34,6 +33,12 @@ RUN yarn install --production --frozen-lockfile
 RUN yarn global add pm2
 COPY --from=build /usr/src/app/dist ./dist
 COPY --from=build /usr/src/app/public ./public
+
+# 建立非 root 使用者（安全性）
+RUN useradd --user-group --create-home --shell /bin/false appuser
+
+RUN mkdir -p /usr/src/app/public/source-m3u8
+RUN chown -R appuser:appuser /usr/src/app
 
 # 切換到非 root 使用者
 USER appuser

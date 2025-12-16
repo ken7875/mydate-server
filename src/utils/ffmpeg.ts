@@ -34,9 +34,14 @@ const streamMap = new Map();
 function start(uuid: string) {
   const dirPath = path.resolve(process.cwd(), `public/source-m3u8/${uuid}`);
   const outputPath = path.join(dirPath, 'output.m3u8');
-  // 如果資料夾不存在，建立它
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+  try {
+    // 如果資料夾不存在，建立它
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+  } catch (error) {
+    console.error('[FFmpeg start] mkdir failed:', error);
+    throw error;
   }
 
   const stream: PassThrough = new PassThrough();
