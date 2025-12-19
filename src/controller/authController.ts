@@ -34,13 +34,18 @@ const register =
     email: string;
     uuid: `${string}-${string}-${string}-${string}-${string}`;
   }) =>
-  async () => {
-    const user = await Users.create({
-      email,
-      uuid,
-    });
+  async (): Promise<Users> => {
+    try {
+      const user = await Users.create({
+        email,
+        uuid,
+      });
 
-    return user;
+      return user;
+    } catch (error) {
+      console.error(error);
+      throw new Error('register fail!!');
+    }
   };
 
 export const verifyToken = catchAsyncController(async (req, res, next) => {
@@ -279,21 +284,32 @@ export const loginMethods = catchAsyncController(
         },
       });
     } else {
-      const uuid = crypto.randomUUID();
-      const row = await register({ email, uuid })();
-      await setCode({ email, hasAccount: false }, res);
-      const msg = row.isPasswordSign
-        ? 'login success'
-        : "valid code has been send tp user's mail";
-      res.status(200).json({
-        status: 'success',
-        message: msg,
-        code: 200,
-        data: {
-          hasAccount: false,
-          isPasswordSign: false,
-        },
-      });
+      try {
+        const uuid = crypto.randomUUID();
+        const row = await register({ email, uuid })();
+        await setCode({ email, hasAccount: false }, res);
+        const msg = row.isPasswordSign
+          ? 'login success'
+          : "valid code has been send tp user's mail";
+        res.status(200).json({
+          status: 'success',
+          message: msg,
+          code: 200,
+          data: {
+            hasAccount: false,
+            isPasswordSign: false,
+          },
+        });
+      } catch (error) {
+        errorHandler({
+          res,
+          info: {
+            code: 400,
+            message: '創建用戶失敗',
+          },
+          sendType: 'json',
+        });
+      }
     }
   },
 );
