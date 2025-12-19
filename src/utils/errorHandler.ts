@@ -6,7 +6,13 @@ export const errorHandler = <T>({
   sendType,
 }: {
   res: Response;
-  info: { status?: 'fail'; code: number; message: string | number; data?: T };
+  info: {
+    status?: 'fail';
+    code: number;
+    message: string | number;
+    data?: T;
+    errorCode?: string;
+  };
   sendType: T extends string ? 'send' : 'json';
 }) => {
   // res.status(info.code)[sendType](info.data)

@@ -10,12 +10,9 @@ const corsConfig =
   process.env.NODE_ENV === 'production'
     ? {
         origin: [process.env.FRONT_END_HOST as string, 'http://0.0.0.0:3000'],
-        // credentials: true,
       }
     : {
-        origin: '*',
-        // origin: [process.env.FRONT_END_HOST as string],
-        // credentials: true,
+        origin: [process.env.FRONT_END_HOST as string],
       };
 
 const app = express();
