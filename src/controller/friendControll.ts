@@ -249,9 +249,11 @@ export const getFriends = catchAsyncController(
         friend.friendId === req.user?.uuid
           ? friend.dataValues.requester.dataValues
           : friend.dataValues.receiver.dataValues;
+
       return {
-        status: friend.dataValues.status,
         ...userData,
+        status: friend.dataValues.status,
+        avatars: userData.avatars.map((avatar: string) => avatar + '.jpeg'),
       };
     });
 
