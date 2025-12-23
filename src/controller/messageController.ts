@@ -7,7 +7,6 @@ import moment from 'moment';
 import sequelize from '../config/mysql';
 import { Op, QueryTypes } from 'sequelize';
 import { errorHandler } from '@/utils/errorHandler';
-import { CustomWebsocket } from '@/websocket/types';
 import { WebSocketServer } from '@/server';
 
 export const getMessage = catchAsyncController(async (req, res) => {
@@ -25,6 +24,15 @@ export const getMessage = catchAsyncController(async (req, res) => {
     offset: (Number(page) - 1) * Number(pageSize),
   });
 
+  const MessageTotal = await Message.count({
+    where: {
+      [Op.or]: [
+        { senderId, receiverId }, // 自己傳給對方的訊息
+        { senderId: receiverId, receiverId: senderId }, // 對方傳給自己的訊息
+      ],
+    },
+  });
+
   const formatDataTime = messages.map((message) => ({
     ...message.dataValues,
     sendTime: +message.dataValues.sendTime / 1000,
@@ -34,6 +42,7 @@ export const getMessage = catchAsyncController(async (req, res) => {
     status: 'success',
     message: 'get message success',
     code: 200,
+    total: MessageTotal,
     data: {
       data: formatDataTime,
     },
