@@ -19,7 +19,7 @@ export const getMessage = catchAsyncController(async (req, res) => {
         { senderId: receiverId, receiverId: senderId }, // 對方傳給自己的訊息
       ],
     },
-    order: [['sendTime', 'ASC']], // 按 sendTime 降序排列
+    order: [['sendTime', 'DESC']], // 按 sendTime 降序排列
     limit: Number(pageSize), // 只取25筆
     offset: (Number(page) - 1) * Number(pageSize),
   });
@@ -43,6 +43,8 @@ export const getMessage = catchAsyncController(async (req, res) => {
     message: 'get message success',
     code: 200,
     total: MessageTotal,
+    page: Number(page),
+    pageSize: Number(pageSize),
     data: {
       data: formatDataTime,
     },
