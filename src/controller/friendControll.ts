@@ -260,6 +260,8 @@ export const getFriends = catchAsyncController(
     res.status(200).json({
       status: 'success',
       total: friendTotal,
+      page: Number(page),
+      pageSize: Number(pageSize),
       message: 'add friend success',
       code: 200,
       data: {
