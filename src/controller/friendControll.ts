@@ -334,7 +334,7 @@ export const getFriend = catchAsyncController(
         {
           model: Users,
           as: 'receiver',
-          attributes: ['uuid', 'userName', 'avatars', 'avatars'],
+          attributes: ['uuid', 'userName', 'avatars'],
         },
       ],
     });

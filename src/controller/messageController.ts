@@ -8,6 +8,8 @@ import sequelize from '../config/mysql';
 import { Op, QueryTypes } from 'sequelize';
 import { errorHandler } from '@/utils/errorHandler';
 import { WebSocketServer } from '@/server';
+import Friendship from '@/model/friendModal';
+import Users from '@/model/authModel';
 
 export const getMessage = catchAsyncController(async (req, res) => {
   const { senderId, receiverId, page = 1, pageSize = 100 } = req.query;
@@ -67,9 +69,39 @@ export const setMessage = async ({
     }));
 
     await Message.bulkCreate(filterNeedData);
+    const friend = await Friendship.findOne({
+      where: {
+        [Op.or]: [
+          { userId: messageData[0].receiverId, friendId: uuid },
+          { userId: uuid, friendId: messageData[0].receiverId },
+        ],
+      },
+      attributes: ['status'],
+      include: [
+        {
+          model: Users,
+          as: 'receiver',
+          attributes: ['uuid', 'userName', 'avatars'],
+        },
+        {
+          model: Users,
+          as: 'requester',
+          attributes: ['uuid', 'userName', 'avatars'],
+        },
+      ],
+    });
+
     WebSocketServer.sendToSpecifyUser({
       uuid: messageData.map((data) => data.receiverId),
-      data: messageData,
+      data: {
+        user: {
+          status: friend?.dataValues.status,
+          ...(friend?.dataValues.requester.uuid === uuid
+            ? friend?.dataValues.requester.dataValues
+            : friend?.dataValues.receiver.dataValues),
+        },
+        message: messageData,
+      },
       type: 'chatRoom',
       code: 'SUCCESS',
     });
