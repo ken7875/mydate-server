@@ -1,11 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
+import { errorHandler } from './errorHandler';
 
 export const catchAsyncController =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
   (req: Request, res: Response, next: NextFunction) => {
-    fn(req, res, next)?.catch((error) => {
-      console.error(error);
-      next();
+    fn(req, res, next)?.catch(() => {
+      errorHandler({
+        res,
+        info: {
+          code: 400,
+          message: '錯誤',
+        },
+        sendType: 'json',
+      });
     });
   };
 

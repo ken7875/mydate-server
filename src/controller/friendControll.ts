@@ -7,7 +7,7 @@ import Friendship from '@/model/friendModal';
 import Users from '@/model/authModel';
 import { Request, Response } from 'express';
 import { catchAsyncController } from '@/utils/catchAsync';
-import { ValidationError } from 'sequelize';
+import { ValidationError, WhereOptions } from 'sequelize';
 import { FriendStatus } from '@/enums/friends';
 import { Op } from 'sequelize';
 import { WebSocketServer } from '@/server';
@@ -209,25 +209,45 @@ export const setFriendStatus = catchAsyncController(
 // 取得已加入的好友
 export const getFriends = catchAsyncController(
   async (req: Request, res: Response) => {
-    const { page = 1, pageSize = 25 } = req.query;
+    const { page = 1, pageSize = 25, userName = '' } = req.query;
+    const myId = req.user!.uuid;
+    const trimUserName = (userName as string)?.trim();
+    const where: WhereOptions = {
+      status: FriendStatus.Success,
+      [Op.or]: [{ userId: myId }, { friendId: myId }],
+      ...(trimUserName && {
+        [Op.and]: [
+          {
+            [Op.or]: [
+              {
+                userId: myId,
+                // $receiver.userName$, $為綁定到 JOIN 表欄位的正式通道
+                // // %${trimUserName}%只要包含即可 ${trimUserName}%以trimUserName開頭 %以trimUserName結尾以trimUserName結尾
+                '$receiver.userName$': { [Op.like]: `%${trimUserName}%` },
+              },
+              {
+                friendId: myId,
+                '$requester.userName$': { [Op.like]: `%${trimUserName}%` },
+              },
+            ],
+          },
+        ],
+      }),
+    };
     const friendData = await Friendship.findAll({
-      where: {
-        [Op.or]: {
-          userId: req.user?.uuid,
-          friendId: req.user?.uuid,
-        },
-        status: FriendStatus.Success,
-      },
+      where,
       include: [
         {
           model: Users,
           as: 'receiver',
           attributes: ['uuid', 'userName', 'avatars'],
+          required: false,
         },
         {
           model: Users,
           as: 'requester',
           attributes: ['uuid', 'userName', 'avatars'],
+          required: false,
         },
       ],
       order: [['messageUpdatedAt', 'DESC']],
