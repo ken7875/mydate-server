@@ -10,6 +10,7 @@ import { errorHandler } from '@/utils/errorHandler';
 import { WebSocketServer } from '@/server';
 import Friendship from '@/model/friendModal';
 import Users from '@/model/authModel';
+import { updateFriend } from '@/controller/friendControll';
 
 export const getMessage = catchAsyncController(async (req, res) => {
   const { senderId, receiverId, page = 1, pageSize = 100 } = req.query;
@@ -52,7 +53,7 @@ export const getMessage = catchAsyncController(async (req, res) => {
     },
   });
 });
-
+// TODO 實作收到新訊息後更改好友順序功能
 export const setMessage = async ({
   data: messageData,
   uuid,
@@ -104,6 +105,15 @@ export const setMessage = async ({
       },
       type: 'chatRoom',
       code: 'SUCCESS',
+    });
+
+    const now = moment().format('YYYY-MM-DD HH:mm:ss');
+    updateFriend({
+      userId: uuid,
+      friendId: messageData[0].receiverId,
+      column: {
+        messageUpdatedAt: now,
+      },
     });
   } catch (error) {
     console.log(error);

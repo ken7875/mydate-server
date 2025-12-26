@@ -47,9 +47,14 @@ Friendship.init(
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
+    messageUpdatedAt: {
+      allowNull: false,
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
   },
   {
-    tableName: 'Friendship',
+    tableName: 'friendship',
     sequelize,
     indexes: [
       {
@@ -66,13 +71,5 @@ Users.hasMany(Friendship, { foreignKey: 'friendId', as: 'receivedRequests' });
 
 Friendship.belongsTo(Users, { foreignKey: 'userId', as: 'requester' });
 Friendship.belongsTo(Users, { foreignKey: 'friendId', as: 'receiver' });
-
-// Friendship.sync({ force: true }) // 這裡可以選擇是否要使用 force
-//   .then(() => {
-//     console.log('User table synced!');
-//   })
-//   .catch((error) => {
-//     console.error('Error syncing User table:', error);
-//   });
 
 export default Friendship;

@@ -230,6 +230,7 @@ export const getFriends = catchAsyncController(
           attributes: ['uuid', 'userName', 'avatars'],
         },
       ],
+      order: [['messageUpdatedAt', 'DESC']],
       limit: Number(pageSize), // 只取25筆
       offset: (Number(page) - 1) * Number(pageSize),
     });
@@ -365,3 +366,26 @@ export const getFriend = catchAsyncController(
     });
   },
 );
+
+export const updateFriend = async ({
+  userId,
+  friendId,
+  column,
+}: {
+  userId: string;
+  friendId: string;
+  column: Record<string, string>;
+}) => {
+  try {
+    await Friendship.update(column, {
+      where: {
+        [Op.or]: [
+          { userId, friendId },
+          { userId: friendId, friendId: userId },
+        ],
+      },
+    });
+  } catch (error) {
+    console.error('update friend fail!!:', error);
+  }
+};

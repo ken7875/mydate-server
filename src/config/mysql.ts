@@ -6,11 +6,11 @@ const access: Options = {
   host: process.env.DB_HOST,
   // port: Number(process.env.DB_PORT),
   dialect: 'mysql',
-  logging: false,
-  // logging: function (str, time) {
-  //   console.log(str, time,'str')
-  //     // do your own logging
-  // }
+  // logging: false,
+  logging: function (str, time) {
+    console.log(str, time, 'str');
+    // do your own logging
+  },
 };
 
 // 透過 new 建立 Sequelize 這個 class，而 sequelize 就是物件 instance
