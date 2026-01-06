@@ -1,5 +1,6 @@
 // import mysql, { ConnectionOptions } from 'mysql2';
 import { Sequelize, Options } from 'sequelize';
+import chalk from 'chalk';
 // create the connection to database
 
 const access: Options = {
@@ -7,10 +8,20 @@ const access: Options = {
   // port: Number(process.env.DB_PORT),
   dialect: 'mysql',
   // logging: false,
-  logging: function (str, time) {
-    console.log(str, time, 'str');
-    // do your own logging
+  logging: (sql: string, timing?: number | any) => {
+    // 1. 將 SQL 關鍵字高亮 (簡單實現)
+    const highlightSql = sql
+      .replace(/SELECT/g, chalk.cyan('SELECT'))
+      .replace(/FROM/g, chalk.magenta('FROM'))
+      .replace(/WHERE/g, chalk.yellow('WHERE'))
+      .replace(/UPDATE/g, chalk.red('UPDATE'));
+
+    // 2. 輸出格式化後的內容
+    console.log(
+      `${chalk.gray('[Sequelize]')} ${highlightSql} ${chalk.green(`(+${timing}ms)`)}`,
+    );
   },
+  benchmark: true, // 必須開啟此項，timing 參數才會有值
 };
 
 // 透過 new 建立 Sequelize 這個 class，而 sequelize 就是物件 instance

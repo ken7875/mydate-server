@@ -366,6 +366,7 @@ export const getFriend = catchAsyncController(
         info: {
           code: 400,
           message: '沒有這個好友',
+          errorCode: 'NO_THIS_FRIEND',
         },
         sendType: 'json',
       });
