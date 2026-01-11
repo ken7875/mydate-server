@@ -55,14 +55,16 @@ function start(uuid: string) {
     .addOptions([
       '-start_number 0',
       '-c:v libx264',
+      '-tune zerolatency', // 關鍵：專為直播設計
       '-profile:v baseline',
       '-level 3.0',
       '-preset veryfast',
       '-s 640x360',
+      '-g 30',
 
       // --- HLS low-latency ---
-      '-hls_time 4', // 影片長度4秒
-      '-hls_list_size 6', // 只保留6個檔案
+      '-hls_time 2', // 影片長度2秒
+      '-hls_list_size 6', // 只保留4個檔案
       // -hls_flags delete_segments自動刪除舊檔案
       // +append_list HLS playlist 以追加方式寫入，避免重複寫整份清單。
       // +program_date_time 在每個片段前寫入絕對時間戳（ISO 日期格式）
