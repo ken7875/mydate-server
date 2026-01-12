@@ -15,11 +15,17 @@ class WebsocketInstance {
   // private clients: Map<string, any>;
   private server: http.Server | null;
   clientsMap: Map<string, CustomWebsocket>;
+  noServer: boolean;
 
-  constructor(server: http.Server | null, path: string) {
+  constructor(
+    server: http.Server | null,
+    path: string,
+    noServer: boolean = false,
+  ) {
     this.path = path;
     this.#messageDeps = new Map();
     this.server = server;
+    this.noServer = noServer;
     // host: '0.0.0.0'
     const websocketServerOption: {
       path: string;
@@ -78,6 +84,10 @@ class WebsocketInstance {
         if (!token || !decoded) {
           ws.send('Authentication failed!');
           return;
+        }
+        if (this.clientsMap.has(decoded.uuid)) {
+          this.clientsMap.get(decoded.uuid)?.close();
+          this.clientsMap.delete(decoded.uuid);
         }
         this.clientsMap.set(decoded.uuid, ws);
         ws.uuid = decoded.uuid;
@@ -246,6 +256,7 @@ class WebsocketInstance {
   }
 
   closeIfNoHeartBeat(ws: CustomWebsocket) {
+    console.log('closeIfNoHeartBeat');
     this.resetHeartBeatTimer(ws);
 
     ws.waitClientHeartBeatTimeout = setTimeout(() => {

@@ -5,8 +5,8 @@ import type { CustomWebsocket } from './types';
 import { closeStream } from '@/controller/stream';
 
 export default class StreamWebsocket extends WebsocketInstance {
-  constructor(server: Server | null, path: string) {
-    super(server, path);
+  constructor(server: Server | null, path: string, noServer: boolean) {
+    super(server, path, noServer);
   }
 
   private closeStreamHandler(ws: CustomWebsocket) {
