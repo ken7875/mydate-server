@@ -14,7 +14,6 @@ class WebsocketInstance {
   #messageDeps: Map<string, ((...args: any[]) => any)[]>;
   // private clients: Map<string, any>;
   private server: http.Server | null;
-  private waitClientHeartBeatTimeout: number | null;
   clientsMap: Map<string, CustomWebsocket>;
 
   constructor(server: http.Server | null, path: string) {
@@ -33,7 +32,6 @@ class WebsocketInstance {
       noServer: server ? true : false,
     };
     this.wss = new WebSocketServer(websocketServerOption);
-    this.waitClientHeartBeatTimeout = null;
     this.clientsMap = new Map();
   }
 
@@ -71,47 +69,45 @@ class WebsocketInstance {
   }
 
   baseConnect() {
-    return new Promise<CustomWebsocket>((resolve, reject) => {
-      this.wss.on('connection', async (ws: CustomWebsocket, request) => {
-        ws.binaryType = 'nodebuffer';
-        const { query } = url.parse(request.url!, true);
-        const token = query?.token as string;
-        try {
-          const decoded = await this.verifyToken(token);
-          if (!token || !decoded) {
-            ws.send('Authentication failed!');
-            return;
-          }
-          this.clientsMap.set(decoded.uuid, ws);
-          ws.uuid = decoded.uuid;
-          this.onListener(ws);
-          const messageBuffer = toBuffer({
-            type: 'global',
-            data: `${this.path} connect success!!`,
-            code: 'SUCCESS',
-          });
-          ws.send(messageBuffer);
-          resolve(ws);
-        } catch (error) {
-          console.log(error, 'websocket token valid failed!!');
-          const messageBuffer = toBuffer({
-            type: 'global',
-            data: 'Authentication failed!',
-            code: 'UNAUTHORIZATION',
-          });
-          console.log('Authentication failed:', error);
-          reject(`user id ${ws.uuid} Authentication failed`);
-          ws.send(messageBuffer);
-          ws.close();
-          // socket.write( // not work
-          //   'HTTP/1.1 401 Unauthorized\r\n' +
-          //   'Content-Type: application/json\r\n' +
-          //   'Connection: close\r\n' +
-          //   '\r\n' +
-          //   JSON.stringify({ message: 'Token is invalid or expired' })
-          // );
+    this.wss.on('connection', async (ws: CustomWebsocket, request) => {
+      ws.binaryType = 'nodebuffer';
+      const { query } = url.parse(request.url!, true);
+      const token = query?.token as string;
+      try {
+        const decoded = await this.verifyToken(token);
+        if (!token || !decoded) {
+          ws.send('Authentication failed!');
+          return;
         }
-      });
+        this.clientsMap.set(decoded.uuid, ws);
+        ws.uuid = decoded.uuid;
+        this.onListener(ws);
+        const messageBuffer = toBuffer({
+          type: 'global',
+          data: `${this.path} connect success!!`,
+          code: 'SUCCESS',
+        });
+        ws.send(messageBuffer);
+        // resolve(ws);
+      } catch (error) {
+        console.log(error, 'websocket token valid failed!!');
+        const messageBuffer = toBuffer({
+          type: 'global',
+          data: 'Authentication failed!',
+          code: 'UNAUTHORIZATION',
+        });
+        console.log('Authentication failed:', error);
+        // reject(`user id ${ws.uuid} Authentication failed`);
+        ws.send(messageBuffer);
+        ws.close();
+        // socket.write( // not work
+        //   'HTTP/1.1 401 Unauthorized\r\n' +
+        //   'Content-Type: application/json\r\n' +
+        //   'Connection: close\r\n' +
+        //   '\r\n' +
+        //   JSON.stringify({ message: 'Token is invalid or expired' })
+        // );
+      }
     });
   }
 
@@ -131,7 +127,7 @@ class WebsocketInstance {
     ws.on('message', async (data: Buffer) => {
       if (data.toString() === 'ping') {
         ws.send('pong');
-        // this.closeIfNoHeartBeat(ws)
+        // this.closeIfNoHeartBeat(ws);
 
         return;
       }
@@ -245,14 +241,14 @@ class WebsocketInstance {
     });
   }
 
-  resetHeartBeatTimer() {
-    clearTimeout(this.waitClientHeartBeatTimeout!);
+  resetHeartBeatTimer(ws: CustomWebsocket) {
+    clearTimeout(ws.waitClientHeartBeatTimeout!);
   }
 
   closeIfNoHeartBeat(ws: CustomWebsocket) {
-    this.resetHeartBeatTimer();
+    this.resetHeartBeatTimer(ws);
 
-    this.waitClientHeartBeatTimeout = setTimeout(() => {
+    ws.waitClientHeartBeatTimeout = setTimeout(() => {
       this.closeSingleConnect(ws);
     }, 5000) as unknown as number;
   }
