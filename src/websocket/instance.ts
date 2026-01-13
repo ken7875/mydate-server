@@ -16,6 +16,7 @@ class WebsocketInstance {
   private server: http.Server | null;
   clientsMap: Map<string, CustomWebsocket>;
   noServer: boolean;
+  heartBeatTimeout: number;
 
   constructor(
     server: http.Server | null,
@@ -39,6 +40,7 @@ class WebsocketInstance {
     };
     this.wss = new WebSocketServer(websocketServerOption);
     this.clientsMap = new Map();
+    this.heartBeatTimeout = 30000;
   }
 
   private async verifyToken(token: string): Promise<any> {
@@ -109,7 +111,7 @@ class WebsocketInstance {
         console.log('Authentication failed:', error);
         // reject(`user id ${ws.uuid} Authentication failed`);
         ws.send(messageBuffer);
-        ws.close();
+        ws.close(401, '驗證失敗');
         // socket.write( // not work
         //   'HTTP/1.1 401 Unauthorized\r\n' +
         //   'Content-Type: application/json\r\n' +
@@ -137,7 +139,7 @@ class WebsocketInstance {
     ws.on('message', async (data: Buffer) => {
       if (data.toString() === 'ping') {
         ws.send('pong');
-        // this.closeIfNoHeartBeat(ws);
+        this.heartBeatHandler(ws);
 
         return;
       }
@@ -255,13 +257,13 @@ class WebsocketInstance {
     clearTimeout(ws.waitClientHeartBeatTimeout!);
   }
 
-  closeIfNoHeartBeat(ws: CustomWebsocket) {
-    console.log('closeIfNoHeartBeat');
+  heartBeatHandler(ws: CustomWebsocket) {
+    console.log('heartBeatHandler');
     this.resetHeartBeatTimer(ws);
 
     ws.waitClientHeartBeatTimeout = setTimeout(() => {
       this.closeSingleConnect(ws);
-    }, 5000) as unknown as number;
+    }, this.heartBeatTimeout) as unknown as number;
   }
 }
 
