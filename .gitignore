@@ -10,7 +10,7 @@ logs
 .fleet
 .idea
 dist
-
+CLAUDE.md
 # Environment variables
 .env*
 *.env
