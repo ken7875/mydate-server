@@ -34,10 +34,12 @@ class WebsocketInstance {
       noServer: boolean;
       host: string;
       port?: number;
+      maxPayload: number;
     } = {
       path,
       host: '0.0.0.0',
       noServer: server ? true : false,
+      maxPayload: 1024 * 1024,
     };
     this.wss = new WebSocketServer(websocketServerOption);
     this.clientsMap = new Map();
