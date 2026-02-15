@@ -142,6 +142,7 @@ class WebsocketInstance {
       // 3. 舊連線的 close 事件延遲觸發 → onclose 把 uuid 從 clientsMap 刪除
 
       // 問題在第 3 步：onclose 刪除的其實是新連線，因為此時 clientsMap 裡的 uuid 已經指向新的 ws 了。
+      this.resetHeartBeatTimer(ws);
       if (this.clientsMap.get(ws.uuid) === ws) {
         this.clientsMap.delete(ws.uuid);
       }
