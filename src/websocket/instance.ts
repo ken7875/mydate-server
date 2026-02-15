@@ -119,7 +119,7 @@ class WebsocketInstance {
 
       this.clientsMap.set(decoded.uuid, ws);
       ws.uuid = decoded.uuid;
-      // this.onListener(ws);
+      this.onListener(ws);
 
       const messageBuffer = toBuffer({
         type: 'global',
@@ -191,7 +191,7 @@ class WebsocketInstance {
   }
 
   sendToAllUser(message: Buffer): void {
-    this.wss.clients.forEach((client) => {
+    this.clientsMap.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(message);
       }
