@@ -4,7 +4,7 @@ import type { CustomWebsocket } from './types';
 import { toBuffer } from '@/utils/dataTransfer';
 import http from 'http';
 import jwt from 'jsonwebtoken';
-import url from 'url';
+import { promisify } from 'util';
 // import { fileTypeFromBuffer } from 'file-type';
 
 // 用extends擴充video websocket
@@ -44,9 +44,12 @@ class WebsocketInstance {
   }
 
   private async verifyToken(token: string): Promise<any> {
-    // const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET as string);
-    const decoded = await jwt.verify(token, process.env.JWT_SECRET as string);
-    return decoded;
+    const verifyAsync = promisify(jwt.verify) as (
+      token: string,
+      secret: string | Buffer,
+    ) => Promise<any>;
+
+    return await verifyAsync(token, process.env.JWT_SECRET as string);
   }
 
   // setTime(data: any[]) {
@@ -62,10 +65,32 @@ class WebsocketInstance {
 
     this.server.on('upgrade', async (request, socket, head) => {
       try {
+        const { searchParams } = new URL(
+          request.url!,
+          `http://${request.headers.host}`,
+        );
+        const token = searchParams.get('token');
+
+        if (!token) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        const decoded = await this.verifyToken(token);
+        if (!decoded) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        (request as any).decoded = decoded;
+
         this.wss.handleUpgrade(request, socket, head, (ws) => {
           this.wss.emit('connection', ws, request);
         });
       } catch (error) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
       }
     });
@@ -77,49 +102,31 @@ class WebsocketInstance {
   }
 
   baseConnect() {
-    this.wss.on('connection', async (ws: CustomWebsocket, request) => {
+    this.wss.on('connection', (ws: CustomWebsocket, request) => {
       ws.binaryType = 'nodebuffer';
-      const { query } = url.parse(request.url!, true);
-      const token = query?.token as string;
-      try {
-        const decoded = await this.verifyToken(token);
-        if (!token || !decoded) {
-          ws.send('Authentication failed!');
-          return;
-        }
-        if (this.clientsMap.has(decoded.uuid)) {
-          this.clientsMap.get(decoded.uuid)?.close();
-          this.clientsMap.delete(decoded.uuid);
-        }
-        this.clientsMap.set(decoded.uuid, ws);
-        ws.uuid = decoded.uuid;
-        this.onListener(ws);
-        const messageBuffer = toBuffer({
-          type: 'global',
-          data: `${this.path} connect success!!`,
-          code: 'SUCCESS',
-        });
-        ws.send(messageBuffer);
-        // resolve(ws);
-      } catch (error) {
-        console.log(error, 'websocket token valid failed!!');
-        const messageBuffer = toBuffer({
-          type: 'global',
-          data: 'Authentication failed!',
-          code: 'UNAUTHORIZATION',
-        });
-        console.log('Authentication failed:', error);
-        // reject(`user id ${ws.uuid} Authentication failed`);
-        ws.send(messageBuffer);
-        ws.close(401, '驗證失敗');
-        // socket.write( // not work
-        //   'HTTP/1.1 401 Unauthorized\r\n' +
-        //   'Content-Type: application/json\r\n' +
-        //   'Connection: close\r\n' +
-        //   '\r\n' +
-        //   JSON.stringify({ message: 'Token is invalid or expired' })
-        // );
+      const { decoded } = request as any;
+
+      if (!decoded) {
+        ws.close(1008, 'Unauthorized');
+        return;
       }
+
+      if (this.clientsMap.has(decoded.uuid)) {
+        this.clientsMap.get(decoded.uuid)?.close();
+        this.clientsMap.delete(decoded.uuid);
+      }
+
+      this.clientsMap.set(decoded.uuid, ws);
+      ws.uuid = decoded.uuid;
+      // this.onListener(ws);
+
+      const messageBuffer = toBuffer({
+        type: 'global',
+        data: `${this.path} connect success!!`,
+        code: 'SUCCESS',
+      });
+      ws.send(messageBuffer);
+      console.log('onconnection');
     });
   }
 
@@ -129,15 +136,23 @@ class WebsocketInstance {
 
   onclose(ws: CustomWebsocket) {
     ws.on('close', () => {
-      console.log(ws.uuid, 'onclose uuid');
-      this.clientsMap.delete(ws.uuid);
+      // 1. 瀏覽器關閉舊連線，同時發起新連線
+      // 2. 新連線通過驗證，baseConnect() 關閉舊連線、從 clientsMap 刪除、寫入新連線
+      // 3. 舊連線的 close 事件延遲觸發 → onclose 把 uuid 從 clientsMap 刪除
+
+      // 問題在第 3 步：onclose 刪除的其實是新連線，因為此時 clientsMap 裡的 uuid 已經指向新的 ws 了。
+      if (this.clientsMap.get(ws.uuid) === ws) {
+        this.clientsMap.delete(ws.uuid);
+      }
     });
   }
 
   onmessage(ws: CustomWebsocket) {
     //對 message 設定監聽，接收從 Client 發送的訊息
     ws.on('message', async (data: Buffer) => {
-      if (data.toString() === 'ping') {
+      const str = data.toString();
+
+      if (str === 'ping') {
         ws.send('pong');
         this.heartBeatHandler(ws);
 
@@ -147,19 +162,7 @@ class WebsocketInstance {
       // TODO 處理未知type類型
       // TODO 避免重複傳資料給自己
       try {
-        if (!Buffer.isBuffer(data)) {
-          const errorRes = Buffer.from(
-            JSON.stringify({
-              type: 'error',
-              code: 'INVALID_PAYLOAD',
-              message: 'Payload 格式不正確',
-            }),
-          );
-          ws.send(errorRes);
-          return;
-        }
-
-        const parseData = JSON.parse(data.toString());
+        const parseData = JSON.parse(str);
 
         if (parseData.type) {
           this.notify({
