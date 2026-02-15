@@ -5,6 +5,7 @@ import { toBuffer } from '@/utils/dataTransfer';
 import http from 'http';
 import jwt from 'jsonwebtoken';
 import { promisify } from 'util';
+import logger from '@/utils/logger';
 // import { fileTypeFromBuffer } from 'file-type';
 
 // 用extends擴充video websocket
@@ -126,7 +127,7 @@ class WebsocketInstance {
         code: 'SUCCESS',
       });
       ws.send(messageBuffer);
-      console.log('onconnection');
+      logger.debug('onconnection');
     });
   }
 
@@ -172,7 +173,7 @@ class WebsocketInstance {
           });
         }
       } catch (error) {
-        console.log(error, 'not valid websocket message');
+        logger.warn({ error }, 'not valid websocket message');
       }
     });
   }
@@ -208,7 +209,7 @@ class WebsocketInstance {
     code: string;
   }) {
     if (!data) {
-      console.log('data not defined!!!');
+      logger.warn('data not defined');
       return;
     }
 
@@ -218,7 +219,7 @@ class WebsocketInstance {
     uuid.forEach((clientId) => {
       const client = this.clientsMap.get(clientId);
       if (!client) return;
-      console.log(`send to ${uuid}`, data);
+      logger.debug({ uuid: clientId, data }, 'send to user');
       client.send(messageToBuffer);
     });
   }
@@ -243,9 +244,7 @@ class WebsocketInstance {
   // 通知有訂閱的function
   notify({ type, data, uuid }: { type: string; data: any; uuid: string }) {
     if (!this.#messageDeps.has(type)) {
-      console.error(
-        `easy-booking-websocket: you do not have subscribe type **${type}**!!`,
-      );
+      logger.debug({ type }, 'unsubscribed message type');
 
       return;
     }
@@ -261,7 +260,7 @@ class WebsocketInstance {
   }
 
   heartBeatHandler(ws: CustomWebsocket) {
-    console.log('heartBeatHandler');
+    logger.debug({ uuid: ws.uuid }, 'heartbeat');
     this.resetHeartBeatTimer(ws);
 
     ws.waitClientHeartBeatTimeout = setTimeout(() => {
