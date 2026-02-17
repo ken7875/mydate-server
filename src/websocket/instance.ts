@@ -115,7 +115,7 @@ class WebsocketInstance {
       }
 
       if (this.clientsMap.has(decoded.uuid)) {
-        this.clientsMap.get(decoded.uuid)?.close();
+        this.clientsMap.get(decoded.uuid)?.close(4001, 'replaced by new connection');
         this.clientsMap.delete(decoded.uuid);
       }
 
@@ -267,7 +267,7 @@ class WebsocketInstance {
     this.resetHeartBeatTimer(ws);
 
     ws.waitClientHeartBeatTimeout = setTimeout(() => {
-      this.closeSingleConnect(ws);
+      ws.close(4000, 'heartbeat timeout');
     }, this.heartBeatTimeout) as unknown as number;
   }
 }

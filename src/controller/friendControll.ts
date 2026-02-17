@@ -345,16 +345,24 @@ export const getFriend = catchAsyncController(
   async (req: Request, res: Response) => {
     const { uuid } = req.params;
 
+    const myId = req.user?.uuid as string;
     const friendData = await Friendship.findOne({
       where: {
-        userId: req.user?.uuid,
-        friendId: uuid,
+        [Op.or]: [
+          { userId: myId, friendId: uuid },
+          { userId: uuid, friendId: myId },
+        ],
       },
-      attributes: ['status'],
+      attributes: ['status', 'userId', 'friendId'],
       include: [
         {
           model: Users,
           as: 'receiver',
+          attributes: ['uuid', 'userName', 'avatars'],
+        },
+        {
+          model: Users,
+          as: 'requester',
           attributes: ['uuid', 'userName', 'avatars'],
         },
       ],
@@ -374,6 +382,11 @@ export const getFriend = catchAsyncController(
       return;
     }
 
+    const userData =
+      friendData.friendId === myId
+        ? friendData.dataValues.requester.dataValues
+        : friendData.dataValues.receiver.dataValues;
+
     res.status(200).json({
       status: 'success',
       message: 'add friend success',
@@ -381,7 +394,7 @@ export const getFriend = catchAsyncController(
       data: {
         data: {
           status: friendData.dataValues.status,
-          ...friendData.dataValues.receiver.dataValues,
+          ...userData,
         },
       },
     });
