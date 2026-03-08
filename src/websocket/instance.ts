@@ -68,11 +68,14 @@ class WebsocketInstance {
 
     this.server.on('upgrade', async (request, socket, head) => {
       try {
-        const { searchParams } = new URL(
-          request.url!,
-          `http://${request.headers.host}`,
+        const protocols = request.headers['sec-websocket-protocol'];
+        const protocolList = protocols
+          ? protocols.split(',').map((p) => p.trim())
+          : [];
+        const bearerProtocol = protocolList.find((p) =>
+          p.startsWith('bearer-'),
         );
-        const token = searchParams.get('token');
+        const token = bearerProtocol ? bearerProtocol.slice(7) : null;
 
         if (!token) {
           socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -115,7 +118,9 @@ class WebsocketInstance {
       }
 
       if (this.clientsMap.has(decoded.uuid)) {
-        this.clientsMap.get(decoded.uuid)?.close(4001, 'replaced by new connection');
+        this.clientsMap
+          .get(decoded.uuid)
+          ?.close(4001, 'replaced by new connection');
         this.clientsMap.delete(decoded.uuid);
       }
 
