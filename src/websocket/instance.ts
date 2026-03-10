@@ -117,12 +117,12 @@ class WebsocketInstance {
         return;
       }
 
-      if (this.clientsMap.has(decoded.uuid)) {
-        this.clientsMap
-          .get(decoded.uuid)
-          ?.close(4001, 'replaced by new connection');
-        this.clientsMap.delete(decoded.uuid);
-      }
+      // if (this.clientsMap.has(decoded.uuid)) {
+      //   this.clientsMap
+      //     .get(decoded.uuid)
+      //     ?.close(4001, 'replaced by new connection');
+      //   this.clientsMap.delete(decoded.uuid);
+      // }
 
       this.clientsMap.set(decoded.uuid, ws);
       ws.uuid = decoded.uuid;
@@ -157,33 +157,42 @@ class WebsocketInstance {
   }
 
   onmessage(ws: CustomWebsocket) {
+    ws.processingQueue = Promise.resolve();
+
     //對 message 設定監聽，接收從 Client 發送的訊息
-    ws.on('message', async (data: Buffer) => {
-      const str = data.toString();
-
-      if (str === 'ping') {
-        ws.send('pong');
-        this.heartBeatHandler(ws);
-
-        return;
-      }
-
-      // TODO 處理未知type類型
-      // TODO 避免重複傳資料給自己
-      try {
-        const parseData = JSON.parse(str);
-
-        if (parseData.type) {
-          this.notify({
-            type: parseData.type,
-            data: parseData.data,
-            uuid: ws.uuid,
-          });
-        }
-      } catch (error) {
-        logger.warn({ error }, 'not valid websocket message');
-      }
+    ws.on('message', (data: Buffer) => {
+      // 將每筆訊息串進隊列，確保同一連線的訊息循序處理
+      // 避免高速發送時產生大量並發 Promise（DB 寫入 / WS 推送）
+      ws.processingQueue = ws.processingQueue
+        .then(() => this.handleMessage(ws, data))
+        .catch(() => {});
     });
+  }
+
+  private async handleMessage(ws: CustomWebsocket, data: Buffer) {
+    const str = data.toString();
+
+    if (str === 'ping') {
+      ws.send('pong');
+      this.heartBeatHandler(ws);
+      return;
+    }
+
+    // TODO 處理未知type類型
+    // TODO 避免重複傳資料給自己
+    try {
+      const parseData = JSON.parse(str);
+
+      if (parseData.type) {
+        await this.notify({
+          type: parseData.type,
+          data: parseData.data,
+          uuid: ws.uuid,
+        });
+      }
+    } catch (error) {
+      logger.warn({ error }, 'not valid websocket message');
+    }
   }
 
   closeSingleConnect(ws: CustomWebsocket) {
@@ -250,7 +259,7 @@ class WebsocketInstance {
 
   // TODO 獨立成訂閱者模式工具
   // 通知有訂閱的function
-  notify({ type, data, uuid }: { type: string; data: any; uuid: string }) {
+  async notify({ type, data, uuid }: { type: string; data: any; uuid: string }) {
     if (!this.#messageDeps.has(type)) {
       logger.debug({ type }, 'unsubscribed message type');
 
@@ -258,9 +267,9 @@ class WebsocketInstance {
     }
 
     const deps = this.#messageDeps.get(type);
-    deps?.forEach((fn) => {
-      fn({ data, uuid });
-    });
+    for (const fn of deps ?? []) {
+      await fn({ data, uuid });
+    }
   }
 
   resetHeartBeatTimer(ws: CustomWebsocket) {

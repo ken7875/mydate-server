@@ -12,6 +12,7 @@ export const errorHandler = <T>({
     message: string | number;
     data?: T;
     errorCode?: string;
+    err: unknown;
   };
   sendType: T extends string ? 'send' : 'json';
 }) => {

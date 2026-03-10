@@ -232,7 +232,8 @@ export const setCode = async (
   }
 
   const loginCode = generateLoginCode();
-  await sendVcodeToMail({ email, code: loginCode, hasAccount }, res);
+  // 寄送驗證碼給用戶email(暫時不需要)
+  // await sendVcodeToMail({ email, code: loginCode, hasAccount }, res);
   await setUserPasswordHandler({
     email,
     password: loginCode,
