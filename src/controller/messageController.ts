@@ -1,5 +1,4 @@
 // import { NextFunction, Request, Response } from "express";
-// import { errorHandler } from '@/utils/errorHandler'
 import { catchAsyncController } from '@/utils/catchAsync';
 import Message from '@/model/messageModel';
 import { MessageData } from '@/types/message';
@@ -11,6 +10,7 @@ import { WebSocketServer } from '@/server';
 import Friendship from '@/model/friendModal';
 import Users from '@/model/authModel';
 import { updateFriend } from '@/controller/friendControll';
+import type { WsReply } from '@/websocket/types';
 
 export const getMessage = catchAsyncController(async (req, res) => {
   const { senderId, receiverId, page = 1, pageSize = 100 } = req.query;
@@ -57,9 +57,11 @@ export const getMessage = catchAsyncController(async (req, res) => {
 export const setMessage = async ({
   data: messageData,
   uuid,
+  reply,
 }: {
   data: MessageData[];
   uuid: string;
+  reply: WsReply;
 }) => {
   try {
     const filterNeedData = messageData.map((data) => ({
@@ -67,6 +69,11 @@ export const setMessage = async ({
       receiverId: data.receiverId,
       message: data.message,
       sendTime: moment(data.sendTime).format('YYYY-MM-DD HH:mm:ss'),
+    }));
+
+    const filterNeedDataForClient = filterNeedData.map((data) => ({
+      ...data,
+      sendTime: moment(data.sendTime).unix(),
     }));
 
     await Message.bulkCreate(filterNeedData);
@@ -101,7 +108,7 @@ export const setMessage = async ({
             ? friend?.dataValues.requester.dataValues
             : friend?.dataValues.receiver.dataValues),
         },
-        message: messageData,
+        message: filterNeedDataForClient,
       },
       type: 'chatRoom',
       code: 'SUCCESS',
@@ -115,8 +122,11 @@ export const setMessage = async ({
         messageUpdatedAt: now,
       },
     });
+
+    reply({ code: 'SUCCESS' });
   } catch (error) {
     console.log(error);
+    reply({ code: 'FAIL', data: { message: '訊息傳送失敗' } });
   }
 };
 
