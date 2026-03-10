@@ -4,7 +4,8 @@ import { errorHandler } from './errorHandler';
 export const catchAsyncController =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
   (req: Request, res: Response, next: NextFunction) => {
-    fn(req, res, next)?.catch(() => {
+    fn(req, res, next)?.catch((err) => {
+      console.error(err);
       errorHandler({
         res,
         info: {
