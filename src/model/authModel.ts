@@ -4,9 +4,9 @@ import {
   DataTypes,
   Model,
   CreationOptional,
-  HasManyAddAssociationMixin,
-  HasManyGetAssociationsMixin,
-  QueryTypes,
+  // HasManyAddAssociationMixin,
+  // HasManyGetAssociationsMixin,
+  // QueryTypes,
 } from 'sequelize';
 // import { GroupUser } from './groupAuthModel';
 // import { Groups } from './groupModel';
@@ -23,6 +23,13 @@ export class Users extends Model {
   declare phone: string;
   declare avatars: string[];
   declare forWhat: string;
+  declare personality: string[];
+  declare interests: string[];
+  declare job: string;
+  declare height: string;
+  declare weight: string;
+  declare bloodType: 'A' | 'B' | 'AB' | 'O';
+  declare city: string;
   declare isPasswordSign: boolean;
   declare userName: string;
   declare createdAt: CreationOptional<Date>;
@@ -98,6 +105,36 @@ Users.init(
       validate: {
         len: [0, 150],
       },
+    },
+    personality: {
+      type: DataTypes.JSON,
+      defaultValue: [],
+      allowNull: true,
+    },
+    interests: {
+      type: DataTypes.JSON,
+      defaultValue: [],
+      allowNull: true,
+    },
+    job: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    height: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    weight: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    bloodType: {
+      type: DataTypes.ENUM('A', 'B', 'AB', 'O'),
+      allowNull: true,
+    },
+    city: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
   },
   {
