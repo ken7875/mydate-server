@@ -7,7 +7,7 @@ export class Message extends Model {
   declare message: string;
   declare sendTime: string;
   declare isRead: boolean;
-  // declare createdAt: CreationOptional<Date>;
+  declare seq: number;
 }
 
 Message.init(
@@ -37,6 +37,12 @@ Message.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false, // 預設值為 false
+    },
+    seq: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: false,
+      autoIncrement: true,
+      unique: true,
     },
   },
   {

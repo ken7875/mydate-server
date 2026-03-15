@@ -8,6 +8,9 @@ import { promisify } from 'util';
 import logger from '@/utils/logger';
 // import { fileTypeFromBuffer } from 'file-type';
 
+const OUTGOING_BACKPRESSURE_THRESHOLD = 1024 * 1024; // 1MB
+const MAX_INCOMING_QUEUE_SIZE = 100;
+
 // 用extends擴充video websocket
 class WebsocketInstance {
   private wss: WebSocketServer;
@@ -158,14 +161,24 @@ class WebsocketInstance {
 
   onmessage(ws: CustomWebsocket) {
     ws.processingQueue = Promise.resolve();
+    ws.queueSize = 0;
 
     //對 message 設定監聽，接收從 Client 發送的訊息
     ws.on('message', (data: Buffer) => {
+      if (ws.queueSize >= MAX_INCOMING_QUEUE_SIZE) {
+        logger.warn({ uuid: ws.uuid }, 'backpressure: drop incoming message');
+        return;
+      }
+
+      ws.queueSize++;
       // 將每筆訊息串進隊列，確保同一連線的訊息循序處理
       // 避免高速發送時產生大量並發 Promise（DB 寫入 / WS 推送）
       ws.processingQueue = ws.processingQueue
         .then(() => this.handleMessage(ws, data))
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          ws.queueSize--;
+        });
     });
   }
 
@@ -208,9 +221,15 @@ class WebsocketInstance {
 
   sendToAllUser(message: Buffer): void {
     this.clientsMap.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
+      if (client.readyState !== WebSocket.OPEN) return;
+      if (client.bufferedAmount > OUTGOING_BACKPRESSURE_THRESHOLD) {
+        logger.warn(
+          { uuid: client.uuid },
+          'backpressure: drop broadcast message',
+        );
+        return;
       }
+      client.send(message);
     });
   }
 
@@ -236,6 +255,10 @@ class WebsocketInstance {
     uuid.forEach((clientId) => {
       const client = this.clientsMap.get(clientId);
       if (!client) return;
+      if (client.bufferedAmount > OUTGOING_BACKPRESSURE_THRESHOLD) {
+        logger.warn({ uuid: clientId }, 'backpressure: drop outgoing message');
+        return;
+      }
       logger.debug({ uuid: clientId, data }, 'send to user');
       client.send(messageToBuffer);
     });
@@ -257,9 +280,16 @@ class WebsocketInstance {
     deps?.push(...fnAry);
   }
 
-  // TODO 獨立成訂閱者模式工具
   // 通知有訂閱的function
-  async notify({ type, data, uuid }: { type: string; data: any; uuid: string }) {
+  async notify({
+    type,
+    data,
+    uuid,
+  }: {
+    type: string;
+    data: any;
+    uuid: string;
+  }) {
     if (!this.#messageDeps.has(type)) {
       logger.debug({ type }, 'unsubscribed message type');
 

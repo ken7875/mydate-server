@@ -4,4 +4,5 @@ export interface CustomWebsocket extends WebSocket {
   uuid: string;
   waitClientHeartBeatTimeout: number | null;
   processingQueue: Promise<void>;
+  queueSize: number;
 }

@@ -10,7 +10,6 @@ import { WebSocketServer } from '@/server';
 import Friendship from '@/model/friendModal';
 import Users from '@/model/authModel';
 import { updateFriend } from '@/controller/friendControll';
-import type { WsReply } from '@/websocket/types';
 
 export const getMessage = catchAsyncController(async (req, res) => {
   const { senderId, receiverId, page = 1, pageSize = 100 } = req.query;
@@ -22,7 +21,10 @@ export const getMessage = catchAsyncController(async (req, res) => {
         { senderId: receiverId, receiverId: senderId }, // 對方傳給自己的訊息
       ],
     },
-    order: [['sendTime', 'DESC']], // 按 sendTime 降序排列
+    order: [
+      ['sendTime', 'DESC'],
+      ['seq', 'DESC'], // sendTime 相同時以寫入順序穩定排序
+    ],
     limit: Number(pageSize), // 只取25筆
     offset: (Number(page) - 1) * Number(pageSize),
   });
@@ -57,11 +59,9 @@ export const getMessage = catchAsyncController(async (req, res) => {
 export const setMessage = async ({
   data: messageData,
   uuid,
-  reply,
 }: {
   data: MessageData[];
   uuid: string;
-  reply: WsReply;
 }) => {
   try {
     const filterNeedData = messageData.map((data) => ({
@@ -123,10 +123,27 @@ export const setMessage = async ({
       },
     });
 
-    reply({ code: 'SUCCESS' });
+    WebSocketServer.sendToSpecifyUser({
+      uuid: [uuid],
+      type: 'chatRoom',
+      code: 'SUCCESS',
+      data: {
+        messageId: messageData[0].messageId,
+        localId: messageData[0].localId,
+      },
+    });
   } catch (error) {
     console.log(error);
-    reply({ code: 'FAIL', data: { message: '訊息傳送失敗' } });
+    WebSocketServer.sendToSpecifyUser({
+      uuid: [uuid],
+      type: 'chatRoom',
+      code: 'FAIL',
+      data: {
+        messageId: messageData[0].messageId,
+        localId: messageData[0].localId,
+        message: '訊息傳送失敗',
+      },
+    });
   }
 };
 
@@ -149,13 +166,13 @@ export const getPreviewMessage = catchAsyncController(async (req, res) => {
       GREATEST(senderId, receiverId) AS user2,
       ROW_NUMBER() OVER (
         PARTITION BY LEAST(senderId, receiverId), GREATEST(senderId, receiverId)
-        ORDER BY sendTime DESC
+        ORDER BY sendTime DESC, seq DESC
       ) AS rn
     FROM message
     WHERE senderId = :userId OR receiverId = :userId
   ) t
   WHERE rn = 1
-  ORDER BY sendTime DESC
+  ORDER BY sendTime DESC, seq DESC
 `;
   const messages: MessageData[] = await sequelize.query(sql, {
     replacements: { userId },
