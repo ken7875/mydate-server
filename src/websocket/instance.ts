@@ -4,7 +4,6 @@ import type { CustomWebsocket } from './types';
 import { toBuffer } from '@/utils/dataTransfer';
 import http from 'http';
 import jwt from 'jsonwebtoken';
-import { promisify } from 'util';
 import logger from '@/utils/logger';
 // import { fileTypeFromBuffer } from 'file-type';
 
@@ -21,6 +20,8 @@ class WebsocketInstance {
   clientsMap: Map<string, CustomWebsocket>;
   noServer: boolean;
   heartBeatTimeout: number;
+  private pendingMessages: Map<string, Buffer[]>;
+  private readonly MAX_PENDING_PER_USER = 50;
 
   constructor(
     server: http.Server | null,
@@ -47,15 +48,11 @@ class WebsocketInstance {
     this.wss = new WebSocketServer(websocketServerOption);
     this.clientsMap = new Map();
     this.heartBeatTimeout = 30000;
+    this.pendingMessages = new Map();
   }
 
-  private async verifyToken(token: string): Promise<any> {
-    const verifyAsync = promisify(jwt.verify) as (
-      token: string,
-      secret: string | Buffer,
-    ) => Promise<any>;
-
-    return await verifyAsync(token, process.env.JWT_SECRET as string);
+  private verifyToken(token: string): any {
+    return jwt.verify(token, process.env.JWT_SECRET as string);
   }
 
   // setTime(data: any[]) {
@@ -69,7 +66,7 @@ class WebsocketInstance {
   init() {
     if (!this.server) return;
 
-    this.server.on('upgrade', async (request, socket, head) => {
+    this.server.on('upgrade', (request, socket, head) => {
       try {
         const protocols = request.headers['sec-websocket-protocol'];
         const protocolList = protocols
@@ -86,13 +83,7 @@ class WebsocketInstance {
           return;
         }
 
-        const decoded = await this.verifyToken(token);
-        if (!decoded) {
-          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-          socket.destroy();
-          return;
-        }
-
+        const decoded = this.verifyToken(token);
         (request as any).decoded = decoded;
 
         this.wss.handleUpgrade(request, socket, head, (ws) => {
@@ -137,6 +128,18 @@ class WebsocketInstance {
         code: 'SUCCESS',
       });
       ws.send(messageBuffer);
+
+      // 補發重連期間積壓的訊息
+      const pending = this.pendingMessages.get(decoded.uuid);
+      if (pending?.length) {
+        pending.forEach((msg) => ws.send(msg));
+        this.pendingMessages.delete(decoded.uuid);
+        logger.debug(
+          { uuid: decoded.uuid, count: pending.length },
+          'flushed pending messages',
+        );
+      }
+
       logger.debug('onconnection');
     });
   }
@@ -254,7 +257,20 @@ class WebsocketInstance {
 
     uuid.forEach((clientId) => {
       const client = this.clientsMap.get(clientId);
-      if (!client) return;
+      if (!client) {
+        // 用戶不在線或正在重連，加入待發送佇列
+        if (!this.pendingMessages.has(clientId)) {
+          this.pendingMessages.set(clientId, []);
+        }
+        const queue = this.pendingMessages.get(clientId)!;
+        if (queue.length < this.MAX_PENDING_PER_USER) {
+          queue.push(messageToBuffer);
+          logger.debug({ uuid: clientId }, 'queued pending message');
+        } else {
+          logger.warn({ uuid: clientId }, 'pending queue full: drop message');
+        }
+        return;
+      }
       if (client.bufferedAmount > OUTGOING_BACKPRESSURE_THRESHOLD) {
         logger.warn({ uuid: clientId }, 'backpressure: drop outgoing message');
         return;
