@@ -16,3 +16,5 @@ CLAUDE.md
 *.env
 build.sh
 scripts/backpressure-k6
+
+src/scripts

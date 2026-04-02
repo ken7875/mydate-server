@@ -264,7 +264,6 @@ export const getFriends = catchAsyncController(
         status: FriendStatus.Success,
       },
     });
-
     const data = friendData.map((friend) => {
       const userData =
         friend.friendId === req.user?.uuid
@@ -273,6 +272,7 @@ export const getFriends = catchAsyncController(
 
       return {
         ...userData,
+        roomId: friend.dataValues.id,
         status: friend.dataValues.status,
         avatars: userData.avatars.map((avatar: string) => avatar + '.jpeg'),
       };
@@ -423,3 +423,13 @@ export const updateFriend = async ({
     console.error('update friend fail!!:', error);
   }
 };
+
+// export const acceptAllPendingFriends = async () => {
+//   console.log(123);
+//   const [count] = await Friendship.update(
+//     { status: FriendStatus.Success },
+//     { where: { status: FriendStatus.Pending } },
+//   );
+// };
+
+// acceptAllPendingFriends();

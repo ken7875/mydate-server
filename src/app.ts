@@ -12,7 +12,7 @@ const corsConfig =
         origin: [process.env.FRONT_END_HOST as string, 'http://0.0.0.0:3000'],
       }
     : {
-        origin: [process.env.FRONT_END_HOST as string],
+        origin: '*',
       };
 
 const app = express();

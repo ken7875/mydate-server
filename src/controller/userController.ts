@@ -6,6 +6,7 @@ import Users from '@/model/authModel';
 import { Op } from 'sequelize';
 // import sequelize from '../config/mysql';
 import Friendship from '@/model/friendModal';
+import redis from '@/config/redis';
 
 export const getUserByMail = async (email: string) => {
   // @mail.com會造曾mysql語法錯誤所以不能用樣板字面直
@@ -64,6 +65,18 @@ export const getUserByCondition = catchAsyncController(
       return;
     }
 
+    const [minAge, maxAge] = age as string[];
+    const cacheKey = `user:recommend:${userUUID}:${gender}:${minAge}:${maxAge}:${limit}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({
+        status: 'success',
+        message: 'success',
+        code: 200,
+        data: { list: JSON.parse(cached) },
+      });
+    }
+
     const friendList = await Friendship.findAll({
       where: {
         [Op.or]: [{ userId: req.user?.uuid }, { friendId: req.user?.uuid }],
@@ -79,8 +92,6 @@ export const getUserByCondition = catchAsyncController(
       if (friend.dataValues.friendId !== userUUID)
         friendsUUID.add(friend.dataValues.friendId);
     });
-
-    const [minAge, maxAge] = age as string[];
     const usersTotal = await Users.count({
       where: {
         uuid: {
@@ -110,6 +121,8 @@ export const getUserByCondition = catchAsyncController(
       offset,
       limit: Number(limit), // 只取25筆
     });
+
+    await redis.set(cacheKey, JSON.stringify(users), 'EX', 300);
 
     res.status(200).json({
       status: 'success',

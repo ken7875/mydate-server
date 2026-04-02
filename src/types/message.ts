@@ -1,3 +1,5 @@
+export type MessageStatus = 'sending' | 'success' | 'failed';
+
 export interface MessageData {
   messageId: string;
   localId?: string;
@@ -5,4 +7,5 @@ export interface MessageData {
   receiverId: string;
   message: string;
   sendTime: string;
+  status?: MessageStatus;
 }

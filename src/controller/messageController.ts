@@ -14,6 +14,7 @@ import { updateFriend } from '@/controller/friendControll';
 export const getMessage = catchAsyncController(async (req, res) => {
   const { senderId, receiverId, page = 1, pageSize = 100 } = req.query;
 
+  // 可用 cursor 游標分頁取代 offset 偏移分頁，效能更好
   const messages = await Message.findAll({
     where: {
       [Op.or]: [
@@ -55,6 +56,21 @@ export const getMessage = catchAsyncController(async (req, res) => {
     },
   });
 });
+
+// TODO test data
+// const a = [];
+// for (let i = 1; i <= 100; i++) {
+//   a.push({
+//     senderId: 'e48cc509-e81f-4dac-8156-ebf246833562',
+//     receiverId: '1181516f-28a9-4337-8d47-e132d12b8316',
+//     message: i,
+//     sendTime: moment(Date.now()).format('YYYY-MM-DD HH:mm:ss'),
+//     status: 'success',
+//     localId: crypto.randomUUID(),
+//   });
+// }
+// Message.bulkCreate(a);
+
 // TODO 實作收到新訊息後更改好友順序功能
 export const setMessage = async ({
   data: messageData,
@@ -63,28 +79,31 @@ export const setMessage = async ({
   data: MessageData[];
   uuid: string;
 }) => {
+  const filterNeedData = messageData.map((data) => ({
+    senderId: uuid,
+    receiverId: data.receiverId,
+    message: data.message,
+    sendTime: moment(data.sendTime).format('YYYY-MM-DD HH:mm:ss'),
+    status: data.status,
+    localId: data.localId,
+  }));
+
+  const filterNeedDataForClient = filterNeedData.map((data) => ({
+    ...data,
+    sendTime: moment(data.sendTime).unix(),
+  }));
+
+  let friend: Awaited<ReturnType<typeof Friendship.findOne>> = null;
+
   try {
-    const filterNeedData = messageData.map((data) => ({
-      senderId: uuid,
-      receiverId: data.receiverId,
-      message: data.message,
-      sendTime: moment(data.sendTime).format('YYYY-MM-DD HH:mm:ss'),
-    }));
-
-    const filterNeedDataForClient = filterNeedData.map((data) => ({
-      ...data,
-      sendTime: moment(data.sendTime).unix(),
-    }));
-
-    await Message.bulkCreate(filterNeedData);
-    const friend = await Friendship.findOne({
+    friend = await Friendship.findOne({
       where: {
         [Op.or]: [
           { userId: messageData[0].receiverId, friendId: uuid },
           { userId: uuid, friendId: messageData[0].receiverId },
         ],
       },
-      attributes: ['status'],
+      attributes: ['status', 'id'],
       include: [
         {
           model: Users,
@@ -99,16 +118,23 @@ export const setMessage = async ({
       ],
     });
 
+    await Message.bulkCreate(filterNeedData);
+
+    // 傳給接收者
     WebSocketServer.sendToSpecifyUser({
       uuid: messageData.map((data) => data.receiverId),
       data: {
+        roomId: friend?.dataValues.id,
         user: {
           status: friend?.dataValues.status,
           ...(friend?.dataValues.requester.uuid === uuid
             ? friend?.dataValues.requester.dataValues
             : friend?.dataValues.receiver.dataValues),
         },
-        message: filterNeedDataForClient,
+        message: filterNeedDataForClient.map((message) => ({
+          ...message,
+          status: 'success',
+        })),
       },
       type: 'chatRoom',
       code: 'SUCCESS',
@@ -123,13 +149,23 @@ export const setMessage = async ({
       },
     });
 
+    // 傳給傳送者(告訴他訊息發送成功或失敗)
     WebSocketServer.sendToSpecifyUser({
       uuid: [uuid],
       type: 'chatRoom',
       code: 'SUCCESS',
       data: {
-        messageId: messageData[0].messageId,
-        localId: messageData[0].localId,
+        roomId: friend?.dataValues.id,
+        user: {
+          status: friend?.dataValues.status,
+          ...(friend?.dataValues.requester.uuid === uuid
+            ? friend?.dataValues.requester.dataValues
+            : friend?.dataValues.receiver.dataValues),
+        },
+        message: filterNeedDataForClient.map((message) => ({
+          ...message,
+          status: 'success',
+        })),
       },
     });
   } catch (error) {
@@ -139,9 +175,17 @@ export const setMessage = async ({
       type: 'chatRoom',
       code: 'FAIL',
       data: {
-        messageId: messageData[0].messageId,
-        localId: messageData[0].localId,
-        message: '訊息傳送失敗',
+        roomId: friend?.dataValues.id,
+        user: {
+          status: friend?.dataValues.status,
+          ...(friend?.dataValues.requester.uuid === uuid
+            ? friend?.dataValues.requester.dataValues
+            : friend?.dataValues.receiver.dataValues),
+        },
+        message: filterNeedDataForClient.map((message) => ({
+          ...message,
+          status: 'failed',
+        })),
       },
     });
   }
