@@ -12,15 +12,12 @@ import Users from '@/model/authModel';
 import { updateFriend } from '@/controller/friendControll';
 
 export const getMessage = catchAsyncController(async (req, res) => {
-  const { senderId, receiverId, page = 1, pageSize = 100 } = req.query;
+  const { roomId, page = 1, pageSize = 100 } = req.query;
 
   // 可用 cursor 游標分頁取代 offset 偏移分頁，效能更好
   const messages = await Message.findAll({
     where: {
-      [Op.or]: [
-        { senderId, receiverId }, // 自己傳給對方的訊息
-        { senderId: receiverId, receiverId: senderId }, // 對方傳給自己的訊息
-      ],
+      roomId,
     },
     order: [
       ['sendTime', 'DESC'],
@@ -32,10 +29,7 @@ export const getMessage = catchAsyncController(async (req, res) => {
 
   const MessageTotal = await Message.count({
     where: {
-      [Op.or]: [
-        { senderId, receiverId }, // 自己傳給對方的訊息
-        { senderId: receiverId, receiverId: senderId }, // 對方傳給自己的訊息
-      ],
+      roomId,
     },
   });
 
@@ -59,7 +53,7 @@ export const getMessage = catchAsyncController(async (req, res) => {
 
 // TODO test data
 // const a = [];
-// for (let i = 1; i <= 100; i++) {
+// for (let i = 1; i <= 500; i++) {
 //   a.push({
 //     senderId: 'e48cc509-e81f-4dac-8156-ebf246833562',
 //     receiverId: '1181516f-28a9-4337-8d47-e132d12b8316',
@@ -67,11 +61,11 @@ export const getMessage = catchAsyncController(async (req, res) => {
 //     sendTime: moment(Date.now()).format('YYYY-MM-DD HH:mm:ss'),
 //     status: 'success',
 //     localId: crypto.randomUUID(),
+//     roomId: '101',
 //   });
 // }
 // Message.bulkCreate(a);
 
-// TODO 實作收到新訊息後更改好友順序功能
 export const setMessage = async ({
   data: messageData,
   uuid,
@@ -86,6 +80,7 @@ export const setMessage = async ({
     sendTime: moment(data.sendTime).format('YYYY-MM-DD HH:mm:ss'),
     status: data.status,
     localId: data.localId,
+    roomId: data.roomId,
   }));
 
   const filterNeedDataForClient = filterNeedData.map((data) => ({
@@ -98,10 +93,7 @@ export const setMessage = async ({
   try {
     friend = await Friendship.findOne({
       where: {
-        [Op.or]: [
-          { userId: messageData[0].receiverId, friendId: uuid },
-          { userId: uuid, friendId: messageData[0].receiverId },
-        ],
+        id: messageData[0].roomId,
       },
       attributes: ['status', 'id'],
       include: [
@@ -118,7 +110,9 @@ export const setMessage = async ({
       ],
     });
 
-    await Message.bulkCreate(filterNeedData);
+    await Message.bulkCreate(
+      filterNeedData.map((d) => ({ ...d, roomId: friend?.dataValues.id })),
+    );
 
     // 傳給接收者
     WebSocketServer.sendToSpecifyUser({
@@ -194,60 +188,63 @@ export const setMessage = async ({
 export const getPreviewMessage = catchAsyncController(async (req, res) => {
   const userId = req.user.uuid;
 
-  const sql = `
-  SELECT
-    senderId,
-    receiverId,
-    message,
-    sendTime,
-    CASE
-      WHEN senderId = :userId THEN receiverId
-      ELSE senderId
-    END AS friendId
-  FROM (
-    SELECT *,
-      LEAST(senderId, receiverId) AS user1,
-      GREATEST(senderId, receiverId) AS user2,
-      ROW_NUMBER() OVER (
-        PARTITION BY LEAST(senderId, receiverId), GREATEST(senderId, receiverId)
-        ORDER BY sendTime DESC, seq DESC
-      ) AS rn
-    FROM message
-    WHERE senderId = :userId OR receiverId = :userId
-  ) t
-  WHERE rn = 1
-  ORDER BY sendTime DESC, seq DESC
-`;
-  const messages: MessageData[] = await sequelize.query(sql, {
-    replacements: { userId },
-    type: QueryTypes.SELECT,
+  const friendships = await Friendship.findAll({
+    where: {
+      [Op.or]: [{ userId }, { friendId: userId }],
+    },
+    attributes: ['id'],
   });
 
-  const groupByFriendId = Object.fromEntries(
-    messages.map((msg) => {
-      const friendId = msg.senderId === userId ? msg.receiverId : msg.senderId;
-      return [friendId, { ...msg, sendTime: +msg.sendTime / 1000 }];
-    }),
+  if (!friendships.length) {
+    return res.status(200).json({
+      status: 'success',
+      message: 'get message success',
+      code: 200,
+      data: {},
+    });
+  }
+
+  const roomIds = friendships.map((f) => f.id);
+
+  const messages: MessageData[] = await sequelize.query(
+    `SELECT m.*
+     FROM message m
+     INNER JOIN (
+       SELECT roomId, MAX(seq) AS maxSeq
+       FROM message
+       WHERE roomId IN (:roomIds)
+       GROUP BY roomId
+     ) t ON m.roomId = t.roomId AND m.seq = t.maxSeq
+     ORDER BY m.sendTime DESC, m.seq DESC`,
+    {
+      replacements: { roomIds },
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const groupByRoomId = Object.fromEntries(
+    messages.map((msg) => [
+      msg.roomId,
+      { ...msg, sendTime: +msg.sendTime / 1000 },
+    ]),
   );
 
   res.status(200).json({
     status: 'success',
     message: 'get message success',
     code: 200,
-    data: groupByFriendId,
+    data: groupByRoomId,
   });
 });
 
 export const markAsRead = catchAsyncController(async (req, res) => {
-  const receiverId = req?.user?.uuid;
-  const { senderId, sendTime } = req.body;
+  const { roomId, sendTime } = req.body;
   // 2. 把比它早的訊息設為已讀（雙方對話）
   await Message.update(
     { isRead: true },
     {
       where: {
-        receiverId, // 你是接收者
-        senderId,
+        roomId,
         isRead: false,
         sendTime: {
           [Op.lte]: new Date(sendTime * 1000), // ✅ JS timestamp 轉 Date
@@ -265,9 +262,9 @@ export const markAsRead = catchAsyncController(async (req, res) => {
 });
 
 export const getUnreadCount = catchAsyncController(async (req, res) => {
-  const { friendIds } = req.query;
+  const { roomIds } = req.query;
 
-  if (!friendIds?.length) {
+  if (!roomIds?.length) {
     errorHandler({
       res,
       info: {
@@ -282,9 +279,8 @@ export const getUnreadCount = catchAsyncController(async (req, res) => {
 
   const unreadMessages = await Message.findAll({
     where: {
-      receiverId: req?.user?.uuid,
-      senderId: {
-        [Op.in]: !Array.isArray(friendIds) ? [friendIds] : friendIds,
+      roomId: {
+        [Op.in]: !Array.isArray(roomIds) ? [roomIds] : roomIds,
       },
       isRead: false,
     },
@@ -293,9 +289,9 @@ export const getUnreadCount = catchAsyncController(async (req, res) => {
 
   const unReadMessageCountObj = unreadMessages.reduce(
     (acc, cur) => {
-      const { senderId } = cur;
-      acc[senderId] = acc[senderId] || { count: 0 };
-      acc[senderId].count++;
+      const { roomId } = cur;
+      acc[roomId] = acc[roomId] || { count: 0 };
+      acc[roomId].count++;
 
       return acc;
     },

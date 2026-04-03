@@ -8,4 +8,5 @@ export interface MessageData {
   message: string;
   sendTime: string;
   status?: MessageStatus;
+  roomId: number;
 }

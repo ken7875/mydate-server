@@ -1,4 +1,4 @@
-import { setMessage } from '@/controller/messageController';
+import { setMessage, markAsRead } from '@/controller/messageController';
 import { setFriendStatus, inviteFriend } from '@/controller/friendControll';
 import WebsocketInstance from './instance';
 import ffmpegTool from '@/utils/ffmpeg';
@@ -12,6 +12,10 @@ export const subscribeWebsocketOnmessageHandler = (
   WebSocketServer.subscribe({
     type: 'setFriendStatus',
     fnAry: [setFriendStatus],
+  });
+  WebSocketServer.subscribe({
+    type: 'markAsRead',
+    fnAry: [markAsRead],
   });
 };
 

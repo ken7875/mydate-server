@@ -8,6 +8,7 @@ export class Message extends Model {
   declare sendTime: string;
   declare isRead: boolean;
   declare seq: number;
+  declare roomId: number;
 }
 
 Message.init(
@@ -43,6 +44,14 @@ Message.init(
       allowNull: false,
       autoIncrement: true,
       unique: true,
+    },
+    roomId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'friendship',
+        key: 'id',
+      },
     },
   },
   {

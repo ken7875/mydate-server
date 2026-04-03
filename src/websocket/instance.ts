@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { WebSocket, WebSocketServer } from 'ws';
-import type { CustomWebsocket } from './types';
+import type { CustomWebsocket, WebSocketMessageType } from './types';
 import { toBuffer } from '@/utils/dataTransfer';
 import http from 'http';
 import jwt from 'jsonwebtoken';
@@ -244,7 +244,7 @@ class WebsocketInstance {
   }: {
     uuid: string[];
     data: any;
-    type: string;
+    type: WebSocketMessageType;
     code: string;
   }) {
     if (!data) {
@@ -285,7 +285,7 @@ class WebsocketInstance {
     type,
     fnAry,
   }: {
-    type: string;
+    type: WebSocketMessageType;
     fnAry: ((...args: any[]) => any)[];
   }) {
     if (!this.#messageDeps.has(type)) {
@@ -302,7 +302,7 @@ class WebsocketInstance {
     data,
     uuid,
   }: {
-    type: string;
+    type: WebSocketMessageType;
     data: any;
     uuid: string;
   }) {

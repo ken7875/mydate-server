@@ -6,3 +6,12 @@ export interface CustomWebsocket extends WebSocket {
   processingQueue: Promise<void>;
   queueSize: number;
 }
+
+export type WebSocketMessageType =
+  | 'global'
+  | 'chatRoom'
+  | 'inviteFriend'
+  | 'setFriendStatus'
+  | 'markAsRead'
+  | 'video'
+  | 'closeVideo';
