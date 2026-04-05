@@ -215,7 +215,7 @@ export const sendVcodeToMail = async (
 // 產出驗證碼
 let timer: ReturnType<typeof setTimeout> | null = null;
 export const setCode = async (
-  { email, hasAccount }: { email: string; hasAccount: boolean },
+  { email }: { email: string; hasAccount: boolean },
   res: Response,
 ) => {
   if (!email || !validator.isEmail(email)) {
@@ -487,25 +487,32 @@ export const uploadUserPhoto = (() => {
     },
   });
 
-  return upload.fields([{ name: 'photo', maxCount: 3 }]);
+  return upload.fields([
+    { name: 'photo1', maxCount: 1 },
+    { name: 'photo2', maxCount: 1 },
+    { name: 'photo3', maxCount: 1 },
+  ]);
 })();
+
+type PhotoFiles = {
+  photo1?: Express.Multer.File[];
+  photo2?: Express.Multer.File[];
+  photo3?: Express.Multer.File[];
+};
+
+const PHOTO_SLOTS = [
+  { key: 'photo1' as const, position: 0 },
+  { key: 'photo2' as const, position: 1 },
+  { key: 'photo3' as const, position: 2 },
+];
 
 export const reseizePhoto = catchAsyncController(
   async (req: Request, res: Response, next: NextFunction) => {
-    const files = (
-      req.files as unknown as {
-        photo: {
-          fieldname: string;
-          originalname: string;
-          encoding: string;
-          mimetype: string;
-          buffer: Buffer;
-          size: number;
-        }[];
-      }
-    )?.photo;
+    const files = req.files as PhotoFiles;
 
-    if (!files || files.length === 0) {
+    const activeSlots = PHOTO_SLOTS.filter(({ key }) => files[key]?.length);
+
+    if (activeSlots.length === 0) {
       errorHandler({
         res,
         info: {
@@ -518,34 +525,16 @@ export const reseizePhoto = catchAsyncController(
       return;
     }
 
-    // 檢查總張數上限
-    const user = await Users.findByPk(req.user?.uuid, {
-      attributes: ['avatars'],
-    });
-    const existingAvatars = Array.isArray(user?.avatars) ? user!.avatars : [];
-    if (existingAvatars.length + files.length > 3) {
-      errorHandler({
-        res,
-        info: {
-          code: 400,
-          message: '最多只能上傳 3 張照片',
-        },
-        sendType: 'json',
-      });
-
-      return;
-    }
-
     // 取得或產生 uploadId（用於冪等上傳）
     const uploadId =
-      (req.headers['x-upload-id'] as string) ||
-      `${req.user?.uuid}-${Date.now()}`;
+      (req.headers['x-upload-id'] as string) || `${req.user?.uuid}`;
 
     req.body.images = [];
     await Promise.all(
-      files.map(async (photo, index) => {
-        // 檔名使用 uploadId，重試時會覆蓋同一檔案
-        const fileName = `${uploadId}-${index}.jpeg`;
+      activeSlots.map(async ({ key, position }) => {
+        const photo = files[key]![0];
+        // 檔名使用 uploadId + position，重試時會覆蓋同一檔案
+        const fileName = `${uploadId}-${position}.jpeg`;
 
         // sharp 圖片處理
         let buffer: Buffer;
@@ -557,7 +546,7 @@ export const reseizePhoto = catchAsyncController(
             .toBuffer();
         } catch {
           throw new AppError(
-            `第 ${index + 1} 張圖片處理失敗，請確認檔案是否損壞`,
+            `photo${position + 1} 圖片處理失敗，請確認檔案是否損壞`,
             400,
           );
         }
@@ -565,7 +554,8 @@ export const reseizePhoto = catchAsyncController(
         // GCS 上傳
         try {
           const url = await uploadToGCS(buffer, fileName);
-          req.body.images.push(url);
+          req.body.images.push({ position, url });
+          return { position, url };
         } catch {
           throw new AppError('圖片上傳失敗，請稍後重試', 502);
         }
@@ -591,21 +581,26 @@ export const saveAvatars = catchAsyncController(
       attributes: ['avatars'],
     });
 
-    let avatars = user?.avatars || [];
-    if (!Array.isArray(avatars)) avatars = [];
+    const avatars: string[] = Array.isArray(user?.avatars)
+      ? [...user!.avatars]
+      : ['', '', ''];
 
-    // 去除已存在的 URL（處理重試場景）
-    const newUrls = req.body.images.filter(
-      (url: string) => !avatars.includes(url),
-    );
-    avatars = avatars.concat(newUrls);
+    // 依照 position 更新對應位置（支援部分更新與重試覆蓋）
+    for (const { position, url } of req.body.images as {
+      position: number;
+      url: string;
+    }[]) {
+      avatars[position] = url;
+    }
 
     await Users.update({ avatars }, { where: { uuid: req.user?.uuid } });
 
     res.status(200).json({
       status: 'success',
       message: 'set avatars success',
-      avatarUrl: req.body.images,
+      avatarUrl: req.body.images.map(
+        ({ url }: { position: number; url: string }) => url,
+      ),
     });
   },
 );

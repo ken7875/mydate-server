@@ -26,7 +26,9 @@ export const catchAsyncController =
         res,
         info: {
           code: 500,
-          message: isDev ? err.message || '伺服器內部錯誤' : '伺服器內部錯誤，請稍後再試',
+          message: isDev
+            ? err.message || '伺服器內部錯誤'
+            : '伺服器內部錯誤，請稍後再試',
           errorCode: 'INTERNAL_ERROR',
         },
         sendType: 'json',
