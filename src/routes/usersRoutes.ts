@@ -1,13 +1,13 @@
 // import 'module-alias/register';
 import express from 'express';
-import { getUserByCondition } from '@/controller/userController';
 import {
-  verifyToken,
+  getUserByCondition,
   uploadUserPhoto,
   reseizePhoto,
   saveAvatars,
   getAvatars,
-} from '@/controller/authController';
+} from '@/controller/userController';
+import { verifyToken } from '@/controller/authController';
 
 // import { setCode, veriyfyCodeHandler, sendVcodeToMail } from '@/controller/registerCodeController'
 
