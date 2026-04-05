@@ -3,7 +3,7 @@ import { errorHandler } from './errorHandler';
 import AppError from './appError';
 
 export const catchAsyncController =
-  (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
+  (fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>) =>
   (req: Request, res: Response, next: NextFunction) => {
     fn(req, res, next)?.catch((err) => {
       console.error(err);
