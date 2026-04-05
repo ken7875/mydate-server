@@ -14,4 +14,7 @@ export type WebSocketMessageType =
   | 'setFriendStatus'
   | 'markAsRead'
   | 'video'
-  | 'closeVideo';
+  | 'closeVideo'
+  | 'streamRoomStatus'
+  | 'addRoom'
+  | 'deleteRoom';

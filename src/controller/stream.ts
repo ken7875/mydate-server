@@ -9,6 +9,7 @@ import Ffmpeg from '@/utils/ffmpeg';
 import { watch, FSWatcher, promises as fsPromises, existsSync } from 'fs';
 import { join } from 'path';
 import RoomModel from '@/model/roomModel';
+import { WebSocketMessageType } from '@/websocket/types';
 
 interface StreamRoomData {
   title: string;
@@ -25,7 +26,7 @@ const operateRoomBroadcast = <T>({
 }: {
   data: T;
   uuid: string;
-  type: string;
+  type: WebSocketMessageType;
 }) => {
   const audiences = [...WebSocketServer.clientsMap.keys()].filter(
     (clientId) => clientId !== uuid,

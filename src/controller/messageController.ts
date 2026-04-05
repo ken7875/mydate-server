@@ -261,8 +261,46 @@ export const markAsRead = catchAsyncController(async (req, res) => {
   });
 });
 
+export const getUnreadTotal = catchAsyncController(async (req, res) => {
+  const userId = req.user.uuid;
+
+  const friendships = await Friendship.findAll({
+    where: {
+      [Op.or]: [{ userId }, { friendId: userId }],
+    },
+    attributes: ['id'],
+  });
+
+  if (!friendships.length) {
+    return res.status(200).json({
+      status: 'success',
+      message: 'success',
+      code: 200,
+      data: { total: 0 },
+    });
+  }
+
+  const roomIds = friendships.map((f) => f.id);
+
+  const total = await Message.count({
+    where: {
+      roomId: { [Op.in]: roomIds },
+      isRead: false,
+      senderId: { [Op.ne]: userId },
+    },
+  });
+
+  res.status(200).json({
+    status: 'success',
+    message: 'success',
+    code: 200,
+    data: { total },
+  });
+});
+
 export const getUnreadCount = catchAsyncController(async (req, res) => {
   const { roomIds } = req.query;
+  const userId = req.user.uuid;
 
   if (!roomIds?.length) {
     errorHandler({
@@ -283,8 +321,9 @@ export const getUnreadCount = catchAsyncController(async (req, res) => {
         [Op.in]: !Array.isArray(roomIds) ? [roomIds] : roomIds,
       },
       isRead: false,
+      senderId: { [Op.ne]: userId },
     },
-    order: [['sendTime', 'DESC']], // 可選：排序
+    order: [['sendTime', 'DESC']],
   });
 
   const unReadMessageCountObj = unreadMessages.reduce(
