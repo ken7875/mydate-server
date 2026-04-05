@@ -12,6 +12,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import AppError from '@/utils/appError';
 import { getUserByMail, findUserById } from './userController';
+import { uploadToGCS } from '@/config/gcs';
 
 const signToken = ({ email, uuid }: { email: string; uuid: string }): string =>
   jwt.sign({ email, uuid }, process.env.JWT_SECRET as string, {
@@ -455,8 +456,8 @@ export const getUserInfo = catchAsyncController(
     const user = await findUserById(req.user?.uuid as string);
     const data = {
       ...user?.dataValues,
-      avatars: user?.dataValues?.avatars?.map?.(
-        (fileName: string) => `${fileName}.jpeg`,
+      avatars: user?.dataValues?.avatars?.map?.((avatar: string) =>
+        avatar.startsWith('http') ? avatar : `${avatar}.jpeg`,
       ),
     };
 
@@ -474,46 +475,42 @@ export const uploadUserPhoto = (() => {
   const upload = multer({
     storage: multerStorage,
     limits: {
-      fileSize: 50 * 1024 * 1024, // 限制 2 MB
+      fileSize: 2 * 1024 * 1024, // 限制 2MB
     },
     fileFilter: (req, file, cb) => {
-      if (file.mimetype.startsWith('image')) {
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new AppError('請回傳正確照片格式', 400));
+        cb(new AppError('僅支援 JPG、PNG、WebP 格式', 400));
       }
     },
   });
 
-  return upload.fields([
-    {
-      name: 'photos',
-      maxCount: 5,
-    },
-  ]);
+  return upload.fields([{ name: 'photo', maxCount: 3 }]);
 })();
 
 export const reseizePhoto = catchAsyncController(
   async (req: Request, res: Response, next: NextFunction) => {
-    // if (req.body)
     const files = (
       req.files as unknown as {
-        photos: {
+        photo: {
           fieldname: string;
           originalname: string;
           encoding: string;
-          minetype: 'image/jpeg';
+          mimetype: string;
           buffer: Buffer;
           size: number;
         }[];
       }
-    )?.photos;
+    )?.photo;
+
     if (!files || files.length === 0) {
       errorHandler({
         res,
         info: {
           code: 400,
-          message: '請給圖片',
+          message: '請上傳至少一張照片',
         },
         sendType: 'json',
       });
@@ -521,16 +518,57 @@ export const reseizePhoto = catchAsyncController(
       return;
     }
 
+    // 檢查總張數上限
+    const user = await Users.findByPk(req.user?.uuid, {
+      attributes: ['avatars'],
+    });
+    const existingAvatars = Array.isArray(user?.avatars) ? user!.avatars : [];
+    if (existingAvatars.length + files.length > 3) {
+      errorHandler({
+        res,
+        info: {
+          code: 400,
+          message: '最多只能上傳 3 張照片',
+        },
+        sendType: 'json',
+      });
+
+      return;
+    }
+
+    // 取得或產生 uploadId（用於冪等上傳）
+    const uploadId =
+      (req.headers['x-upload-id'] as string) ||
+      `${req.user?.uuid}-${Date.now()}`;
+
     req.body.images = [];
     await Promise.all(
-      files.map(async (photo) => {
-        const fileName = `${req.user?.userName}-${Date.now()}`;
-        await sharp(photo.buffer)
-          .resize(300, 300)
-          .toFormat('jpeg')
-          .jpeg({ quality: 90 })
-          .toFile(`public/${fileName}.jpeg`);
-        req.body.images.push(fileName);
+      files.map(async (photo, index) => {
+        // 檔名使用 uploadId，重試時會覆蓋同一檔案
+        const fileName = `${uploadId}-${index}.jpeg`;
+
+        // sharp 圖片處理
+        let buffer: Buffer;
+        try {
+          buffer = await sharp(photo.buffer)
+            .resize(500, 750)
+            .toFormat('jpeg')
+            .jpeg({ quality: 90 })
+            .toBuffer();
+        } catch {
+          throw new AppError(
+            `第 ${index + 1} 張圖片處理失敗，請確認檔案是否損壞`,
+            400,
+          );
+        }
+
+        // GCS 上傳
+        try {
+          const url = await uploadToGCS(buffer, fileName);
+          req.body.images.push(url);
+        } catch {
+          throw new AppError('圖片上傳失敗，請稍後重試', 502);
+        }
       }),
     );
 
@@ -540,37 +578,42 @@ export const reseizePhoto = catchAsyncController(
 
 export const saveAvatars = catchAsyncController(
   async (req: Request, res: Response) => {
+    // 驗證 userId 參數（若存在）
+    if (req.params.userId && req.params.userId !== req.user?.uuid) {
+      return errorHandler({
+        res,
+        info: { code: 403, message: '無權限操作此用戶' },
+        sendType: 'json',
+      });
+    }
+
     const user = await Users.findByPk(req.user?.uuid, {
       attributes: ['avatars'],
     });
 
     let avatars = user?.avatars || [];
-
     if (!Array.isArray(avatars)) avatars = [];
 
-    avatars = avatars.concat(req.body.images);
-
-    Users.update(
-      {
-        avatars,
-      },
-      {
-        where: {
-          uuid: req.user?.uuid,
-        },
-      },
+    // 去除已存在的 URL（處理重試場景）
+    const newUrls = req.body.images.filter(
+      (url: string) => !avatars.includes(url),
     );
+    avatars = avatars.concat(newUrls);
 
-    res.status(201).json({
+    await Users.update({ avatars }, { where: { uuid: req.user?.uuid } });
+
+    res.status(200).json({
       status: 'success',
       message: 'set avatars success',
+      avatarUrl: req.body.images,
     });
   },
 );
 
 export const getAvatars = catchAsyncController(
   async (req: Request, res: Response) => {
-    const user = await Users.findByPk(req.user?.uuid, {
+    const userId = req.params.userId || req.user?.uuid;
+    const user = await Users.findByPk(userId, {
       attributes: ['avatars'],
     });
 
@@ -582,19 +625,11 @@ export const getAvatars = catchAsyncController(
     }
 
     const { avatars } = user.dataValues;
-    const avatarUrls = avatars.map((fileName: string) => `${fileName}.jpeg`);
 
     res.status(200).json({
       status: 'success',
-      data: avatarUrls,
+      data: avatars || [],
     });
-
-    // const { avatars } = user.dataValues;
-    // const avatarFileName = avatars[0] + '.jpeg';
-
-    // const imagePath = path.join(__dirname, '../../public/', avatarFileName);
-
-    // res.sendFile(imagePath);
   },
 );
 // export const validateLoginCode = catchAsyncController(async(req: Request, res: Response) => {
