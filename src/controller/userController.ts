@@ -10,7 +10,7 @@ import redis from '@/config/redis';
 import multer from 'multer';
 import sharp from 'sharp';
 import AppError from '@/utils/appError';
-import { uploadToGCS } from '@/config/gcs';
+import { saveLocalFile } from '@/config/localStorage';
 
 export const getUserByMail = async (email: string) => {
   // @mail.com會造曾mysql語法錯誤所以不能用樣板字面直
@@ -178,6 +178,7 @@ const PHOTO_SLOTS = [
 export const reseizePhoto = catchAsyncController(
   async (req: Request, res: Response, next: NextFunction) => {
     const files = req.files as PhotoFiles;
+    console.log(req.files, 'req.files');
 
     const activeSlots = PHOTO_SLOTS.filter(({ key }) => files[key]?.length);
 
@@ -220,12 +221,12 @@ export const reseizePhoto = catchAsyncController(
           );
         }
 
-        // GCS 上傳
         try {
-          const url = await uploadToGCS(buffer, fileName);
+          const url = await saveLocalFile(buffer, fileName);
           req.body.images.push({ position, url });
           return { position, url };
-        } catch {
+        } catch (err) {
+          console.log(err, 'err');
           throw new AppError('圖片上傳失敗，請稍後重試', 502);
         }
       }),
@@ -293,6 +294,49 @@ export const getAvatars = catchAsyncController(
     res.status(200).json({
       status: 'success',
       data: avatars || [],
+    });
+  },
+);
+
+export const changeAvatarsOrder = catchAsyncController(
+  async (req: Request, res: Response) => {
+    if (req.params.userId && req.params.userId !== req.user?.uuid) {
+      return errorHandler({
+        res,
+        info: { code: 403, message: '無權限操作此用戶' },
+        sendType: 'json',
+      });
+    }
+
+    const { order }: { order: number[] } = req.body;
+
+    if (!Array.isArray(order) || order.length === 0) {
+      return errorHandler({
+        res,
+        info: { code: 400, message: 'order 至少需包含一個元素' },
+        sendType: 'json',
+      });
+    }
+
+    const user = await Users.findByPk(req.user?.uuid, {
+      attributes: ['avatars'],
+    });
+
+    const avatars: string[] = Array.isArray(user?.avatars)
+      ? user!.avatars
+      : ['', '', ''];
+
+    const reordered = order.map((i) => avatars[i] ?? '');
+
+    await Users.update(
+      { avatars: reordered },
+      { where: { uuid: req.user?.uuid } },
+    );
+
+    res.status(200).json({
+      status: 'success',
+      message: 'change avatars order success',
+      data: { avatars: reordered },
     });
   },
 );

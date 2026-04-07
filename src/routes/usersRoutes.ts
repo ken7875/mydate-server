@@ -6,6 +6,7 @@ import {
   reseizePhoto,
   saveAvatars,
   getAvatars,
+  changeAvatarsOrder,
 } from '@/controller/userController';
 import { verifyToken } from '@/controller/authController';
 
@@ -22,7 +23,9 @@ router.post(
   reseizePhoto,
   saveAvatars,
 );
+
 router.get('/:userId/avatars', verifyToken, getAvatars);
+router.put('/:userId/avatars/order', verifyToken, changeAvatarsOrder);
 
 // router.post('/signMail', checkEmailRepeat, setCode, sendVcodeToMail)
 // router.post('/verfiyCode', veriyfyCodeHandler)

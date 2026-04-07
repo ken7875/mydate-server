@@ -5,6 +5,7 @@ import { Request, Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 
 const corsConfig =
   process.env.NODE_ENV === 'production'
@@ -18,6 +19,22 @@ const corsConfig =
 const app = express();
 app.use(cors(corsConfig));
 app.options('*', cors(corsConfig));
+
+if (process.env.NODE_ENV === 'production') {
+  const limiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      status: 'error',
+      code: 429,
+      message: 'Too many requests, please try again after an hour.',
+    },
+  });
+  app.use('/api', limiter);
+}
+
 app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
 app.use(helmet());

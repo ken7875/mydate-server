@@ -453,9 +453,6 @@ export const getUserInfo = catchAsyncController(
     const user = await findUserById(req.user?.uuid as string);
     const data = {
       ...user?.dataValues,
-      avatars: user?.dataValues?.avatars?.map?.((avatar: string) =>
-        avatar.startsWith('http') ? avatar : `${avatar}.jpeg`,
-      ),
     };
 
     res.status(200).json({
