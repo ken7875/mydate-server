@@ -35,7 +35,7 @@ export const getMessage = catchAsyncController(async (req, res) => {
 
   const formatDataTime = messages.map((message) => ({
     ...message.dataValues,
-    sendTime: +message.dataValues.sendTime / 1000,
+    sendTime: +message.dataValues.sendTime,
   }));
 
   res.status(200).json({
@@ -77,7 +77,9 @@ export const setMessage = async ({
     senderId: uuid,
     receiverId: data.receiverId,
     message: data.message,
-    sendTime: moment(data.sendTime).format('YYYY-MM-DD HH:mm:ss'),
+    sendTime: moment(Number(data.sendTime) * 1000).format(
+      'YYYY-MM-DD HH:mm:ss',
+    ),
     status: data.status,
     localId: data.localId,
     roomId: data.roomId,
@@ -85,7 +87,7 @@ export const setMessage = async ({
 
   const filterNeedDataForClient = filterNeedData.map((data) => ({
     ...data,
-    sendTime: moment(data.sendTime).unix(),
+    sendTime: moment(Number(data.sendTime) * 1000).unix(),
   }));
 
   let friend: Awaited<ReturnType<typeof Friendship.findOne>> = null;
