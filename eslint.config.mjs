@@ -31,4 +31,14 @@ export default [
   pluginJs.configs.recommended,
   ...tseslint.configs.recommended,
   prettierConfig,
+  {
+    files: ['src/config/sequelize-config.js'],
+    languageOptions: {
+      globals: globals.node,
+      sourceType: 'commonjs',
+    },
+    rules: {
+      '@typescript-eslint/no-var-requires': 'off',
+    },
+  },
 ];
