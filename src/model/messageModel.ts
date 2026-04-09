@@ -1,10 +1,13 @@
 import { DataTypes, Model } from 'sequelize';
 import sequelize from '../config/mysql';
+import { MessageImage } from './messageImageModel';
 
 export class Message extends Model {
   declare senderId: string;
   declare receiverId: string;
   declare message: string;
+  declare type: 'text' | 'image';
+  declare imageId: string | null;
   declare sendTime: string;
   declare isRead: boolean;
   declare seq: number;
@@ -33,6 +36,16 @@ Message.init(
     sendTime: {
       type: DataTypes.DATE,
       allowNull: false,
+    },
+    type: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'text',
+    },
+    imageId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      defaultValue: null,
     },
     isRead: {
       type: DataTypes.BOOLEAN,
@@ -77,5 +90,10 @@ Message.init(
 // }
 
 // syncDatabase()
+
+Message.belongsTo(MessageImage, {
+  foreignKey: 'imageId',
+  targetKey: 'imageId',
+});
 
 export default Message;
