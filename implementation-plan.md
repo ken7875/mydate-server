@@ -417,9 +417,9 @@ interface ProcessedImageResult {
 | TASK-003 | ✅ done | Message Model 修改（2026-04-09）|
 | TASK-004 | ✅ done | TypeScript 類型定義（2026-04-09）|
 | TASK-005 | ✅ done | 路由骨架 + 掛載（2026-04-09）|
-| TASK-006 | ⬜ pending | POST /uploads/init |
-| TASK-007 | ⬜ pending | PUT /uploads/:uploadId（串流上傳）|
-| TASK-008 | ⬜ pending | GET /uploads/:uploadId/status |
+| TASK-006 | ✅ done | POST /uploads/init（2026-04-09）|
+| TASK-007 | ✅ done | PUT /uploads/:uploadId（串流上傳）（2026-04-09）|
+| TASK-008 | ✅ done | GET /uploads/:uploadId/status（2026-04-09）|
 | TASK-009 | ⬜ pending | imageProcessor service |
 | TASK-010 | ⬜ pending | finalizeUpload 整合 |
 | TASK-011 | ⬜ pending | DELETE /uploads/:uploadId |
