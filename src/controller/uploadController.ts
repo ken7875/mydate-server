@@ -321,6 +321,28 @@ export const getUploadStatus = catchAsyncController(async (req, res) => {
   });
 });
 
-export const cancelUpload = catchAsyncController(async (_req, res) => {
-  res.status(501).json({ message: 'Not implemented' });
+export const cancelUpload = catchAsyncController(async (req, res) => {
+  const { uploadId } = req.params;
+
+  // 1. 從 Redis 取 session，不存在回 404
+  const session = await getSession(uploadId);
+  if (!session) {
+    throw new AppError('UPLOAD_NOT_FOUND', 404);
+  }
+
+  // 2. 若 status = 'completed' 回 409
+  if (session.status === 'completed') {
+    throw new AppError('UPLOAD_ALREADY_COMPLETED', 409);
+  }
+
+  // 3. 刪除 Redis keys
+  await redis.del(SESSION_KEY(uploadId));
+  await redis.del(CHUNKS_KEY(uploadId));
+
+  // 4. 刪除 tmp 目錄（若存在）
+  const chunkDir = path.join('tmp', 'uploads', uploadId);
+  await fs.rm(chunkDir, { recursive: true, force: true });
+
+  // 5. 回傳 204
+  res.status(204).send();
 });
