@@ -1,5 +1,7 @@
 export interface UploadSession {
   userId: string;
+  receiverId: string;
+  roomId: number;
   fileName: string;
   fileSize: number;
   mimeType: string;
@@ -10,6 +12,10 @@ export interface UploadSession {
   expiresAt: string;
 }
 
-export const ALLOWED_MIME_TYPES = ['image/webp', 'image/jpeg', 'image/png'] as const;
+export const ALLOWED_MIME_TYPES = [
+  'image/webp',
+  'image/jpeg',
+  'image/png',
+] as const;
 export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 export const MAX_CHUNK_SIZE = 2 * 1024 * 1024; // 2MB per chunk

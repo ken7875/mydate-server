@@ -10,6 +10,10 @@ import {
   MAX_FILE_SIZE,
   MAX_CHUNK_SIZE,
 } from '@/types/upload';
+import { processImage } from '@/services/imageProcessor';
+import MessageImage from '@/model/messageImageModel';
+import Message from '@/model/messageModel';
+import { WebSocketServer } from '@/server';
 
 const UPLOAD_SESSION_TTL_SECONDS = 86400;
 
@@ -26,6 +30,8 @@ async function getSession(uploadId: string): Promise<UploadSession | null> {
 
   return {
     userId: raw.userId,
+    receiverId: raw.receiverId ?? '',
+    roomId: Number(raw.roomId ?? 0),
     fileName: raw.fileName,
     fileSize: Number(raw.fileSize),
     mimeType: raw.mimeType,
@@ -38,19 +44,73 @@ async function getSession(uploadId: string): Promise<UploadSession | null> {
 }
 
 // ---------------------------------------------------------------------------
-// finalizeUpload — stub; full implementation in TASK-010
+// finalizeUpload — called automatically when last chunk is received
 // ---------------------------------------------------------------------------
 
 export async function finalizeUpload(
   uploadId: string,
   session: UploadSession,
 ): Promise<void> {
-  void uploadId;
-  void session;
-  // TODO: TASK-010 will replace this stub with:
-  //   processImage → write MySQL (MessageImage + Message)
-  //   → broadcast WebSocket imageMessage → update Redis status = 'completed'
-  throw new AppError('PROCESSING_NOT_IMPLEMENTED', 501);
+  // 1. Process image (validate, convert, generate blurHash, clean up tmp)
+  let result;
+  try {
+    result = await processImage(uploadId, session);
+  } catch {
+    throw new AppError('PROCESSING_FAILED', 422);
+  }
+
+  const now = new Date();
+  const expireAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  // 2. Write MessageImage record
+  await MessageImage.create({
+    imageId: result.imageId,
+    userId: session.userId,
+    originalUrl: result.originalUrl,
+    thumbnailUrl: result.thumbnailUrl,
+    blurHash: result.blurHash,
+    width: result.width,
+    height: result.height,
+    fileSize: result.fileSize,
+    mimeType: 'image/webp',
+    isExpired: false,
+    expireAt,
+    createdAt: now,
+  });
+
+  // 3. Write Message record
+  const message = await Message.create({
+    senderId: session.userId,
+    receiverId: session.receiverId,
+    roomId: session.roomId,
+    type: 'image',
+    imageId: result.imageId,
+    message: '',
+    sendTime: now,
+    isRead: false,
+  });
+
+  // 4. Update Redis session status = 'completed'
+  await redis.hset(SESSION_KEY(uploadId), 'status', 'completed');
+
+  // 5. Broadcast imageMessage via WebSocket
+  const timestamp = now.toISOString();
+  WebSocketServer.sendToSpecifyUser({
+    uuid: [session.userId, session.receiverId],
+    type: 'imageMessage',
+    code: 'SUCCESS',
+    data: {
+      roomId: session.roomId,
+      messageId: message.dataValues.id as string,
+      senderId: session.userId,
+      imageId: result.imageId,
+      thumbnailUrl: result.thumbnailUrl,
+      blurHash: result.blurHash,
+      width: result.width,
+      height: result.height,
+      timestamp,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -58,10 +118,26 @@ export async function finalizeUpload(
 // ---------------------------------------------------------------------------
 
 export const initUpload = catchAsyncController(async (req, res) => {
-  const { fileName, fileSize, mimeType, checksum, totalChunks } = req.body;
+  const {
+    fileName,
+    fileSize,
+    mimeType,
+    checksum,
+    totalChunks,
+    receiverId,
+    roomId,
+  } = req.body;
 
   // 1. 驗證必填欄位
-  if (!fileName || !fileSize || !mimeType || !checksum || !totalChunks) {
+  if (
+    !fileName ||
+    !fileSize ||
+    !mimeType ||
+    !checksum ||
+    !totalChunks ||
+    !receiverId ||
+    !roomId
+  ) {
     throw new AppError('MISSING_REQUIRED_FIELDS', 400);
   }
 
@@ -97,6 +173,8 @@ export const initUpload = catchAsyncController(async (req, res) => {
   // 7. 寫入 Redis
   await redis.hset(`upload:session:${uploadId}`, {
     userId,
+    receiverId,
+    roomId: String(roomId),
     fileName,
     fileSize: String(fileSize),
     mimeType,
