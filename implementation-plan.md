@@ -413,7 +413,7 @@ interface ProcessedImageResult {
 | Task | 狀態 | 說明 |
 |------|------|------|
 | TASK-001 | ✅ done | 安裝套件（2026-04-09）|
-| TASK-002 | ⬜ pending | MessageImage Model |
+| TASK-002 | ✅ done | MessageImage Model（2026-04-09）|
 | TASK-003 | ⬜ pending | Message Model 修改 |
 | TASK-004 | ⬜ pending | TypeScript 類型定義 |
 | TASK-005 | ⬜ pending | 路由骨架 + 掛載 |
