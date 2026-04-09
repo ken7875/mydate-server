@@ -420,7 +420,7 @@ interface ProcessedImageResult {
 | TASK-006 | ✅ done | POST /uploads/init（2026-04-09）|
 | TASK-007 | ✅ done | PUT /uploads/:uploadId（串流上傳）（2026-04-09）|
 | TASK-008 | ✅ done | GET /uploads/:uploadId/status（2026-04-09）|
-| TASK-009 | ⬜ pending | imageProcessor service |
+| TASK-009 | ✅ done | imageProcessor service（2026-04-09）|
 | TASK-010 | ⬜ pending | finalizeUpload 整合 |
 | TASK-011 | ⬜ pending | DELETE /uploads/:uploadId |
 | TASK-012 | ⬜ pending | GET /images/:imageId/meta |
