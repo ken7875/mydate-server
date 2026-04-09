@@ -423,6 +423,6 @@ interface ProcessedImageResult {
 | TASK-009 | ✅ done | imageProcessor service（2026-04-09）|
 | TASK-010 | ✅ done | finalizeUpload 整合（2026-04-09）|
 | TASK-011 | ✅ done | DELETE /uploads/:uploadId（2026-04-09）|
-| TASK-012 | ⬜ pending | GET /images/:imageId/meta |
-| TASK-013 | ⬜ pending | Rate Limiters |
-| TASK-014 | ⬜ pending | Cron Job 清理 |
+| TASK-012 | ✅ done | GET /images/:imageId/meta（2026-04-09）|
+| TASK-013 | ✅ done | Rate Limiters（已於 TASK-005 建立完整實作，2026-04-09 確認）|
+| TASK-014 | ✅ done | Cron Job 清理（2026-04-09）|

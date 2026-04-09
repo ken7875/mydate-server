@@ -17,6 +17,7 @@ import {
   subscribeWebsocketOnmessageHandler,
   subscribeStreamWebsocketOnmessageHandler,
 } from '@/websocket/subscriber';
+import { startCleanupJob } from '@/jobs/cleanupExpiredUploads';
 
 const port = 3001;
 const streamPort = 3002;
@@ -39,6 +40,8 @@ WebSocketServer.init();
 WebSocketServer.onconnect();
 streamWebSocketServer.init();
 streamWebSocketServer.onconnect();
+
+startCleanupJob();
 
 const handleUncaughtExceptionOrRejection = (err: Error) => {
   console.log('Uncaughted Exception or Unhandled Rejection happens!');
