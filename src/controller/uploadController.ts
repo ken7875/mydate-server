@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import fs from 'fs/promises';
+import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import path from 'path';
 import { catchAsyncController } from '@/utils/catchAsync';
 import AppError from '@/utils/appError';
@@ -14,7 +15,6 @@ import { processImage } from '@/services/imageProcessor';
 import MessageImage from '@/model/messageImageModel';
 import Message from '@/model/messageModel';
 import { WebSocketServer } from '@/server';
-
 const UPLOAD_SESSION_TTL_SECONDS = 86400;
 
 // ---------------------------------------------------------------------------
@@ -23,6 +23,9 @@ const UPLOAD_SESSION_TTL_SECONDS = 86400;
 
 const SESSION_KEY = (uploadId: string) => `upload:session:${uploadId}`;
 const CHUNKS_KEY = (uploadId: string) => `upload:chunks:${uploadId}`;
+// 追蹤每個 chunk 已接收的 byte 數，支援 sub-chunk 斷點續傳
+const CHUNK_PROGRESS_KEY = (uploadId: string) =>
+  `upload:chunk:progress:${uploadId}`;
 
 async function getSession(uploadId: string): Promise<UploadSession | null> {
   const raw = await redis.hgetall(SESSION_KEY(uploadId));
@@ -50,11 +53,35 @@ async function getSession(uploadId: string): Promise<UploadSession | null> {
 export async function finalizeUpload(
   uploadId: string,
   session: UploadSession,
+  filePath: string,
 ): Promise<void> {
-  // 1. Process image (validate, convert, generate blurHash, clean up tmp)
+  // 1. 讀取完整檔案，進行安全驗證
+  const fileBuffer = await fsPromises.readFile(filePath);
+
+  // 1a. Magic Bytes 驗證：確認檔案真實格式為允許的圖片類型
+  const { fileTypeFromBuffer } = await import('file-type');
+  const fileTypeResult = await fileTypeFromBuffer(
+    fileBuffer as unknown as ArrayBuffer,
+  );
+  const ALLOWED_MAGIC_MIME_TYPES = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]);
+  if (!fileTypeResult || !ALLOWED_MAGIC_MIME_TYPES.has(fileTypeResult.mime)) {
+    throw new AppError('INVALID_IMAGE', 415);
+  }
+
+  // 1b. SHA-256 Checksum 比對：確認傳輸過程中資料未損壞或竄改
+  const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  if (hash !== session.checksum) {
+    throw new AppError('CHECKSUM_MISMATCH', 400);
+  }
+
+  // 2. Process image (convert, generate blurHash)
   let result;
   try {
-    result = await processImage(uploadId, session);
+    result = await processImage(uploadId, filePath);
   } catch {
     throw new AppError('PROCESSING_FAILED', 422);
   }
@@ -62,11 +89,12 @@ export async function finalizeUpload(
   const now = new Date();
   const expireAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  // 2. Write MessageImage record
+  // 3. Write MessageImage record
+  const imageId = crypto.randomUUID();
   await MessageImage.create({
-    imageId: result.imageId,
+    imageId,
     userId: session.userId,
-    originalUrl: result.originalUrl,
+    originalUrl: filePath,
     thumbnailUrl: result.thumbnailUrl,
     blurHash: result.blurHash,
     width: result.width,
@@ -78,37 +106,41 @@ export async function finalizeUpload(
     createdAt: now,
   });
 
-  // 3. Write Message record
+  // 4. Write Message record
   const message = await Message.create({
     senderId: session.userId,
     receiverId: session.receiverId,
     roomId: session.roomId,
     type: 'image',
-    imageId: result.imageId,
+    imageId,
     message: '',
     sendTime: now,
     isRead: false,
   });
 
-  // 4. Update Redis session status = 'completed'
+  // 5. Update Redis session status = 'completed'
   await redis.hset(SESSION_KEY(uploadId), 'status', 'completed');
 
-  // 5. Broadcast imageMessage via WebSocket
-  const timestamp = now.toISOString();
+  // 6. Broadcast imageMessage via WebSocket
   WebSocketServer.sendToSpecifyUser({
     uuid: [session.userId, session.receiverId],
-    type: 'imageMessage',
+    type: 'chatRoom',
     code: 'SUCCESS',
     data: {
       roomId: session.roomId,
-      messageId: message.dataValues.id as string,
-      senderId: session.userId,
-      imageId: result.imageId,
-      thumbnailUrl: result.thumbnailUrl,
-      blurHash: result.blurHash,
-      width: result.width,
-      height: result.height,
-      timestamp,
+      message: [
+        {
+          type: 'image',
+          messageId: message.dataValues.id as string,
+          senderId: session.userId,
+          imageId,
+          thumbnailUrl: result.thumbnailUrl,
+          blurHash: result.blurHash,
+          width: result.width,
+          height: result.height,
+          sendTime: now.toISOString(),
+        },
+      ],
     },
   });
 }
@@ -118,15 +150,8 @@ export async function finalizeUpload(
 // ---------------------------------------------------------------------------
 
 export const initUpload = catchAsyncController(async (req, res) => {
-  const {
-    fileName,
-    fileSize,
-    mimeType,
-    checksum,
-    totalChunks,
-    receiverId,
-    roomId,
-  } = req.body;
+  const { fileName, fileSize, mimeType, checksum, receiverId, roomId } =
+    req.body;
 
   // 1. 驗證必填欄位
   if (
@@ -134,7 +159,6 @@ export const initUpload = catchAsyncController(async (req, res) => {
     !fileSize ||
     !mimeType ||
     !checksum ||
-    !totalChunks ||
     !receiverId ||
     !roomId
   ) {
@@ -156,11 +180,8 @@ export const initUpload = catchAsyncController(async (req, res) => {
     throw new AppError('INVALID_CHECKSUM', 400);
   }
 
-  // 5. 驗證 totalChunks（容許誤差 ±1）
-  const expectedChunks = Math.ceil(fileSize / MAX_CHUNK_SIZE);
-  if (totalChunks < 1 || Math.abs(totalChunks - expectedChunks) > 1) {
-    throw new AppError('INVALID_CHUNK_COUNT', 400);
-  }
+  // 5. 後端計算 totalChunks，確保與 MAX_CHUNK_SIZE 一致
+  const totalChunks = Math.ceil(fileSize / MAX_CHUNK_SIZE);
 
   // 6. 產生 uploadId
   const uploadId = crypto.randomUUID();
@@ -222,60 +243,57 @@ export const uploadChunk = catchAsyncController(async (req, res) => {
     throw new AppError('INVALID_CHUNK_INDEX', 400);
   }
 
-  // 4. 驗證 req.body (Buffer) 大小
+  // 4. 解析 Content-Range header（必填）
+  //    格式：Content-Range: bytes {start}-{end}/{chunkTotal}
+  const contentRange = req.headers['content-range'];
+  if (!contentRange) {
+    throw new AppError('MISSING_CONTENT_RANGE', 400);
+  }
+  const match = contentRange.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
+  if (!match) {
+    throw new AppError('INVALID_CONTENT_RANGE', 400);
+  }
+  const start = Number(match[1]);
+  // const end = Number(match[2]);
+  // const total = Number(match[3]);
+
   const body = req.body as Buffer;
-  const isLastChunk = chunkIndex === session.totalChunks - 1;
-  const expectedLastChunkSize =
-    session.fileSize - (session.totalChunks - 1) * MAX_CHUNK_SIZE;
 
-  if (isLastChunk) {
-    if (body.length !== expectedLastChunkSize) {
-      throw new AppError('INVALID_CHUNK_SIZE', 400);
-    }
-  } else {
-    if (body.length > MAX_CHUNK_SIZE) {
-      throw new AppError('INVALID_CHUNK_SIZE', 400);
-    }
+  const fileDir = path.join('public', 'messageImage', uploadId);
+  const filePath = path.join(fileDir, session.fileName);
+
+  await fsPromises.mkdir(fileDir, { recursive: true });
+  // 「建立一個全新的檔案，若已存在就報錯」，這個動作在 OS 層是原子的。
+  try {
+    // O_CREAT | O_EXCL 確保只有第一個請求能建立檔案（原子操作，無 race condition）
+    // O_WRONLY 以唯寫模式開啟
+    // O_CREAT 檔案不存在時建立
+    // O_EXCL 若檔案已存在則直接失敗（拋出 EEXIST）
+    const fh = await fsPromises.open(
+      filePath,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
+    );
+    // 將檔案大小設定為 session.fileSize（例如 10MB）。此時檔案內容全為零，但磁碟空間已預先保留，後續任何 chunk 寫入任意 offset 都不會超出邊界。
+    await fh.truncate(session.fileSize);
+    await fh.close();
+  } catch (e: any) {
+    if (e.code !== 'EEXIST') throw e;
   }
 
-  // 5. 幂等處理：若此 chunkIndex 已接收過，直接回 200
-  const alreadyReceived = await redis.sismember(
-    CHUNKS_KEY(uploadId),
-    String(chunkIndex),
-  );
-  if (alreadyReceived) {
-    res.status(200).json({
-      uploadId,
-      chunkIndex,
-      receivedChunks: session.receivedChunks,
-      totalChunks: session.totalChunks,
-    });
-    return;
+  const fileHandle = await fsPromises.open(filePath, 'r+');
+  try {
+    await fileHandle.write(body, 0, body.length, start);
+  } finally {
+    await fileHandle.close();
   }
 
-  // 6. 將 chunk 寫入磁碟 tmp/uploads/{uploadId}/{chunkIndex}.chunk
-  const chunkDir = path.join('tmp', 'uploads', uploadId);
-  await fs.mkdir(chunkDir, { recursive: true });
-  await fs.writeFile(
-    path.join(chunkDir, `${chunkIndex}.chunk`),
-    body as unknown as Uint8Array,
-  );
-
-  // 7. 更新 Redis：記錄 chunkIndex，累計 receivedChunks
   await redis.sadd(CHUNKS_KEY(uploadId), String(chunkIndex));
-  const newReceivedChunks = await redis.hincrby(
-    SESSION_KEY(uploadId),
-    'receivedChunks',
-    1,
-  );
+  const receivedCount = await redis.scard(CHUNKS_KEY(uploadId));
 
-  // 8. 所有 chunks 都到齊時，自動觸發 finalizeUpload
-  if (newReceivedChunks === session.totalChunks) {
-    await finalizeUpload(uploadId, session);
-
+  if (receivedCount === session.totalChunks) {
+    await finalizeUpload(uploadId, session, filePath);
     res.status(200).json({
       uploadId,
-      receivedChunks: newReceivedChunks,
       totalChunks: session.totalChunks,
     });
     return;
@@ -285,7 +303,6 @@ export const uploadChunk = catchAsyncController(async (req, res) => {
   res.status(206).json({
     uploadId,
     chunkIndex,
-    receivedChunks: newReceivedChunks,
     totalChunks: session.totalChunks,
   });
 });
@@ -299,13 +316,20 @@ export const getUploadStatus = catchAsyncController(async (req, res) => {
     throw new AppError('UPLOAD_NOT_FOUND', 404);
   }
 
-  // 2. 從 upload:chunks:{uploadId} Set 取已接收的 chunkIndex 清單
+  // 2. 從 upload:chunks:{uploadId} Set 取已完整接收的 chunkIndex 清單
   const rawChunkIndices = await redis.smembers(CHUNKS_KEY(uploadId));
   const receivedChunkIndices = rawChunkIndices
     .map(Number)
     .sort((a, b) => a - b);
 
-  // 3. 回傳 200
+  // 3. 取各 chunk 的 sub-chunk 進度（尚未完整接收的 chunk 已收到多少 bytes）
+  const rawProgress = await redis.hgetall(CHUNK_PROGRESS_KEY(uploadId));
+  const chunkProgress: Record<number, number> = {};
+  for (const [k, v] of Object.entries(rawProgress)) {
+    chunkProgress[Number(k)] = Number(v);
+  }
+
+  // 4. 回傳 200
   res.status(200).json({
     status: 'success',
     code: 200,
@@ -316,6 +340,7 @@ export const getUploadStatus = catchAsyncController(async (req, res) => {
       totalChunks: session.totalChunks,
       receivedChunks: session.receivedChunks,
       receivedChunkIndices,
+      chunkProgress,
       expiresAt: session.expiresAt,
     },
   });
@@ -335,13 +360,14 @@ export const cancelUpload = catchAsyncController(async (req, res) => {
     throw new AppError('UPLOAD_ALREADY_COMPLETED', 409);
   }
 
-  // 3. 刪除 Redis keys
+  // 3. 刪除 Redis keys（含 sub-chunk 進度）
   await redis.del(SESSION_KEY(uploadId));
   await redis.del(CHUNKS_KEY(uploadId));
+  await redis.del(CHUNK_PROGRESS_KEY(uploadId));
 
-  // 4. 刪除 tmp 目錄（若存在）
-  const chunkDir = path.join('tmp', 'uploads', uploadId);
-  await fs.rm(chunkDir, { recursive: true, force: true });
+  // 4. 刪除上傳目錄（若存在）
+  const chunkDir = path.join('public', 'messageImage', uploadId);
+  await fsPromises.rm(chunkDir, { recursive: true, force: true });
 
   // 5. 回傳 204
   res.status(204).send();

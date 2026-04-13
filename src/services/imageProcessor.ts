@@ -1,14 +1,10 @@
-import crypto from 'crypto';
+// import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import sharp from 'sharp';
 import { encode as blurhashEncode } from 'blurhash';
-import AppError from '@/utils/appError';
-import { UploadSession } from '@/types/upload';
 
 export interface ProcessedImageResult {
-  imageId: string;
-  originalUrl: string;
   thumbnailUrl: string;
   blurHash: string;
   width: number;
@@ -16,11 +12,11 @@ export interface ProcessedImageResult {
   fileSize: number;
 }
 
-const ALLOWED_MAGIC_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-]);
+// const ALLOWED_MAGIC_MIME_TYPES = new Set([
+//   'image/jpeg',
+//   'image/png',
+//   'image/webp',
+// ]);
 
 /**
  * Merges all chunk files for an upload into a single Buffer,
@@ -28,62 +24,33 @@ const ALLOWED_MAGIC_MIME_TYPES = new Set([
  */
 export async function processImage(
   uploadId: string,
-  session: UploadSession,
+  filePath: string,
 ): Promise<ProcessedImageResult> {
-  // 1. Read all chunks in order and concatenate into one Buffer
-  const chunkDir = path.join('tmp', 'uploads', uploadId);
-  const chunkBuffers: Buffer[] = [];
+  // 1. Read file from disk
+  const fileBuffer = await fs.readFile(filePath);
 
-  for (let i = 0; i < session.totalChunks; i++) {
-    const chunkPath = path.join(chunkDir, `${i}.chunk`);
-    const chunkData = await fs.readFile(chunkPath);
-    chunkBuffers.push(chunkData);
-  }
-
-  const fileBuffer = Buffer.concat(chunkBuffers);
-
-  // 2. Validate magic bytes via file-type (ESM-only package, use dynamic import)
-  const { fileTypeFromBuffer } = await import('file-type');
-  const fileTypeResult = await fileTypeFromBuffer(fileBuffer);
-
-  if (!fileTypeResult || !ALLOWED_MAGIC_MIME_TYPES.has(fileTypeResult.mime)) {
-    throw new AppError('INVALID_IMAGE', 415);
-  }
-
-  // 3. Verify SHA-256 checksum against session.checksum
-  const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-  if (hash !== session.checksum) {
-    throw new AppError('CHECKSUM_MISMATCH', 400);
-  }
-
-  // 4. Generate a new imageId
-  const imageId = crypto.randomUUID();
-
-  // 5. Create output directory public/images/messageImage/{imageId}/
-  const outputDir = path.join('public', 'images', 'messageImage', imageId);
-  await fs.mkdir(outputDir, { recursive: true });
-
-  const originalPath = path.join(outputDir, 'original.webp');
+  // 2. Create output directory public/images/messageImage/{imageId}/
+  const outputDir = path.join('public', 'messageImage', uploadId);
   const thumbPath = path.join(outputDir, 'thumb.webp');
 
-  // 6. Convert to WebP and strip EXIF metadata (default sharp behaviour) → original.webp
-  await sharp(fileBuffer).webp().toFile(originalPath);
+  // 3. Convert to WebP and strip EXIF metadata (default sharp behaviour) → original.webp
+  await sharp(fileBuffer).webp().toFile(filePath);
 
-  // 7. Generate thumbnail (max 400×400, preserve aspect ratio) → thumb.webp
-  await sharp(fileBuffer)
+  // 4. Generate thumbnail (max 400×400, preserve aspect ratio) → thumb.webp
+  await sharp(filePath)
     .resize(400, 400, { fit: 'inside' })
     .webp()
     .toFile(thumbPath);
 
-  // 8. Get image dimensions (from original) and file size (from disk)
+  // 5. Get image dimensions (from original) and file size (from disk)
   const metadata = await sharp(fileBuffer).metadata();
   const width = metadata.width ?? 0;
   const height = metadata.height ?? 0;
 
-  const stat = await fs.stat(originalPath);
+  const stat = await fs.stat(filePath);
   const fileSize = stat.size;
 
-  // 9. Compute BlurHash using a small raw pixel buffer from sharp
+  // 6. Compute BlurHash using a small raw pixel buffer from sharp
   const BLURHASH_WIDTH = 32;
   const BLURHASH_HEIGHT = Math.round(32 * (height / (width || 1)));
   const clampedBlurHashHeight = Math.max(1, BLURHASH_HEIGHT);
@@ -95,23 +62,15 @@ export async function processImage(
     .toBuffer({ resolveWithObject: true });
 
   const blurHash = blurhashEncode(
-    new Uint8ClampedArray(rawPixels),
-    rawInfo.width,
-    rawInfo.height,
-    4,
-    3,
+    new Uint8ClampedArray(rawPixels), // RGBA 像素陣列
+    rawInfo.width, // 實際寬度
+    rawInfo.height, // 實際高度
+    4, // X 方向頻率分量
+    3, // Y 方向頻率分量
   );
-
-  // 10. Remove the tmp upload directory
-  await fs.rm(chunkDir, { recursive: true, force: true });
-
-  // 11. Return result
-  const originalUrl = `/images/messageImage/${imageId}/original.webp`;
-  const thumbnailUrl = `/images/messageImage/${imageId}/thumb.webp`;
+  const thumbnailUrl = `/public/messageImage/${uploadId}/thumb.webp`;
 
   return {
-    imageId,
-    originalUrl,
     thumbnailUrl,
     blurHash,
     width,

@@ -31,10 +31,12 @@ MessageImage.init(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    // 縮圖 URL，用於訊息列表預覽，尺寸較小以加速載入
     thumbnailUrl: {
       type: DataTypes.STRING,
       allowNull: false,
     },
+    // BlurHash 編碼字串，在原圖載入完成前顯示模糊佔位預覽
     blurHash: {
       type: DataTypes.STRING,
       allowNull: false,

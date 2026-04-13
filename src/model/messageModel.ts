@@ -38,7 +38,7 @@ Message.init(
       allowNull: false,
     },
     type: {
-      type: DataTypes.STRING,
+      type: DataTypes.ENUM('text', 'image'),
       allowNull: false,
       defaultValue: 'text',
     },

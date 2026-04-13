@@ -129,6 +129,7 @@ export const setMessage = async ({
         },
         message: filterNeedDataForClient.map((message) => ({
           ...message,
+          type: 'text',
           status: 'success',
         })),
       },
@@ -160,6 +161,7 @@ export const setMessage = async ({
         },
         message: filterNeedDataForClient.map((message) => ({
           ...message,
+          type: 'text',
           status: 'success',
         })),
       },
@@ -180,6 +182,7 @@ export const setMessage = async ({
         },
         message: filterNeedDataForClient.map((message) => ({
           ...message,
+          type: 'text',
           status: 'failed',
         })),
       },

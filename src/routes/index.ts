@@ -6,7 +6,6 @@ import message from './messageRoute';
 import express from 'express';
 import stream from './streamRoomRoutes';
 import upload from './uploadRoutes';
-import image from './imageRoutes';
 
 const router = express.Router();
 
@@ -16,7 +15,6 @@ router.use('/user', user);
 router.use('/friends', friend);
 router.use('/message', message);
 router.use('/uploads', upload);
-router.use('/images', image);
 
 const streamRouter = express.Router();
 streamRouter.use('/stream', stream);

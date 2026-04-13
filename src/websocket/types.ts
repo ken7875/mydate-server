@@ -18,4 +18,4 @@ export type WebSocketMessageType =
   | 'streamRoomStatus'
   | 'addRoom'
   | 'deleteRoom'
-  | 'imageMessage';
+  ;

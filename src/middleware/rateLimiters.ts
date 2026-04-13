@@ -1,7 +1,8 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Request } from 'express';
 
-const keyGenerator = (req: Request) => req.user?.uuid ?? req.ip ?? 'unknown';
+const keyGenerator = (req: Request) =>
+  req.user?.uuid ?? ipKeyGenerator(req.ip) ?? 'unknown';
 
 const rateLimitedResponse = {
   status: 'fail',
@@ -9,6 +10,17 @@ const rateLimitedResponse = {
   errorCode: 'RATE_LIMITED',
   message: 'Too many requests, please try again later.',
 };
+
+export const defaultLomiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator,
+  handler: (_req, res) => {
+    res.status(429).json(rateLimitedResponse);
+  },
+});
 
 export const initUploadLimiter = rateLimit({
   windowMs: 60000,
