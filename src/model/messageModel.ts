@@ -1,12 +1,12 @@
 import { DataTypes, Model } from 'sequelize';
 import sequelize from '../config/mysql';
 import { MessageImage } from './messageImageModel';
-
+import type { MessageType } from '@/types/message';
 export class Message extends Model {
   declare senderId: string;
   declare receiverId: string;
   declare message: string;
-  declare type: 'text' | 'image';
+  declare type: MessageType;
   declare imageId: string | null;
   declare sendTime: string;
   declare isRead: boolean;
@@ -92,6 +92,7 @@ Message.init(
 // syncDatabase()
 
 Message.belongsTo(MessageImage, {
+  as: 'messageImage',
   foreignKey: 'imageId',
   targetKey: 'imageId',
 });

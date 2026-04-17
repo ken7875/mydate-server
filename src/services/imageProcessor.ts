@@ -50,9 +50,9 @@ export async function processImage(
   const stat = await fs.stat(filePath);
   const fileSize = stat.size;
 
-  // 6. Compute BlurHash using a small raw pixel buffer from sharp
-  const BLURHASH_WIDTH = 32;
-  const BLURHASH_HEIGHT = Math.round(32 * (height / (width || 1)));
+  // 取樣解析度（影響頻率分量的輸入品質）
+  const BLURHASH_WIDTH = 94;
+  const BLURHASH_HEIGHT = Math.round(94 * (height / (width || 1)));
   const clampedBlurHashHeight = Math.max(1, BLURHASH_HEIGHT);
 
   const { data: rawPixels, info: rawInfo } = await sharp(fileBuffer)
@@ -65,10 +65,10 @@ export async function processImage(
     new Uint8ClampedArray(rawPixels), // RGBA 像素陣列
     rawInfo.width, // 實際寬度
     rawInfo.height, // 實際高度
-    4, // X 方向頻率分量
-    3, // Y 方向頻率分量
+    6, // X components：水平方向細節（1–9）
+    4, // Y components：垂直方向細節（1–9）
   );
-  const thumbnailUrl = `/public/messageImage/${uploadId}/thumb.webp`;
+  const thumbnailUrl = `messageImage/${uploadId}/thumb.webp`;
 
   return {
     thumbnailUrl,

@@ -15,7 +15,7 @@ const router = express.Router();
 
 router.post('/init', verifyToken, initUploadLimiter, initUpload);
 router.put(
-  '/:uploadId/chunks/:chunkIndex',
+  '/:uploadId/:localId/chunks/:chunkIndex',
   verifyToken,
   chunkUploadLimiter,
   express.raw({ type: 'application/octet-stream', limit: '2mb' }),

@@ -49,12 +49,40 @@ async function getSession(uploadId: string): Promise<UploadSession | null> {
 // ---------------------------------------------------------------------------
 // finalizeUpload — called automatically when last chunk is received
 // ---------------------------------------------------------------------------
-
+// async function deleteAllUploadKeys() {
+//   let cursor = '0';
+//   do {
+//     const [nextCursor, keys] = await redis.scan(
+//       cursor,
+//       'MATCH',
+//       'upload:*',
+//       'COUNT',
+//       100,
+//     );
+//     cursor = nextCursor;
+//     if (keys.length > 0) {
+//       await redis.del(...keys);
+//     }
+//   } while (cursor !== '0');
+// }
+// deleteAllUploadKeys();
 export async function finalizeUpload(
   uploadId: string,
+  localId: string,
   session: UploadSession,
   filePath: string,
-): Promise<void> {
+): Promise<{
+  senderId: string;
+  receiverId: string;
+  thumbnailUrl: string;
+  blurHash: string;
+  roomId: number;
+  type: string;
+  imageId: string;
+  message: string;
+  sendTime: Date;
+  isRead: false;
+}> {
   // 1. 讀取完整檔案，進行安全驗證
   const fileBuffer = await fsPromises.readFile(filePath);
 
@@ -73,7 +101,10 @@ export async function finalizeUpload(
   }
 
   // 1b. SHA-256 Checksum 比對：確認傳輸過程中資料未損壞或竄改
-  const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  const hash = crypto
+    .createHash('sha256')
+    .update(fileBuffer as unknown as Uint8Array)
+    .digest('hex');
   if (hash !== session.checksum) {
     throw new AppError('CHECKSUM_MISMATCH', 400);
   }
@@ -90,11 +121,11 @@ export async function finalizeUpload(
   const expireAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
   // 3. Write MessageImage record
-  const imageId = crypto.randomUUID();
+  const imageId = uploadId;
   await MessageImage.create({
     imageId,
     userId: session.userId,
-    originalUrl: filePath,
+    originalUrl: filePath.replace(/^public\//, ''),
     thumbnailUrl: result.thumbnailUrl,
     blurHash: result.blurHash,
     width: result.width,
@@ -122,6 +153,25 @@ export async function finalizeUpload(
   await redis.hset(SESSION_KEY(uploadId), 'status', 'completed');
 
   // 6. Broadcast imageMessage via WebSocket
+  const createdMessage = await Message.findOne({
+    where: { id: message.dataValues.id },
+    include: [
+      {
+        model: MessageImage,
+        as: 'messageImage',
+        foreignKey: 'imageId',
+        required: false,
+        attributes: [
+          'thumbnailUrl',
+          'blurHash',
+          'width',
+          'height',
+          'isExpired',
+        ],
+      },
+    ],
+  });
+
   WebSocketServer.sendToSpecifyUser({
     uuid: [session.userId, session.receiverId],
     type: 'chatRoom',
@@ -130,19 +180,26 @@ export async function finalizeUpload(
       roomId: session.roomId,
       message: [
         {
-          type: 'image',
-          messageId: message.dataValues.id as string,
-          senderId: session.userId,
-          imageId,
-          thumbnailUrl: result.thumbnailUrl,
-          blurHash: result.blurHash,
-          width: result.width,
-          height: result.height,
-          sendTime: now.toISOString(),
+          ...createdMessage!.dataValues,
+          localId,
+          sendTime: Math.floor(+createdMessage!.dataValues.sendTime / 1000),
         },
       ],
     },
   });
+
+  return {
+    senderId: session.userId,
+    receiverId: session.receiverId,
+    roomId: session.roomId,
+    type: 'image',
+    thumbnailUrl: result.thumbnailUrl,
+    blurHash: result.blurHash,
+    imageId,
+    message: '',
+    sendTime: now,
+    isRead: false,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +277,7 @@ export const initUpload = catchAsyncController(async (req, res) => {
 });
 
 export const uploadChunk = catchAsyncController(async (req, res) => {
-  const { uploadId, chunkIndex: chunkIndexParam } = req.params;
+  const { uploadId, localId, chunkIndex: chunkIndexParam } = req.params;
 
   // 1. 從 Redis 取 session，不存在回 404
   const session = await getSession(uploadId);
@@ -282,7 +339,7 @@ export const uploadChunk = catchAsyncController(async (req, res) => {
 
   const fileHandle = await fsPromises.open(filePath, 'r+');
   try {
-    await fileHandle.write(body, 0, body.length, start);
+    await fileHandle.write(body as Uint8Array, 0, body.length, start);
   } finally {
     await fileHandle.close();
   }
@@ -291,19 +348,24 @@ export const uploadChunk = catchAsyncController(async (req, res) => {
   const receivedCount = await redis.scard(CHUNKS_KEY(uploadId));
 
   if (receivedCount === session.totalChunks) {
-    await finalizeUpload(uploadId, session, filePath);
+    const message = await finalizeUpload(uploadId, localId, session, filePath);
     res.status(200).json({
-      uploadId,
-      totalChunks: session.totalChunks,
+      status: 'success',
+      code: 200,
+      data: message,
     });
     return;
   }
 
   // 未完成：回 206 Partial Content
   res.status(206).json({
-    uploadId,
-    chunkIndex,
-    totalChunks: session.totalChunks,
+    status: 'success',
+    code: 206,
+    data: {
+      uploadId,
+      chunkIndex,
+      totalChunks: session.totalChunks,
+    },
   });
 });
 

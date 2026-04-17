@@ -1,6 +1,7 @@
 // import { NextFunction, Request, Response } from "express";
 import { catchAsyncController } from '@/utils/catchAsync';
 import Message from '@/model/messageModel';
+import MessageImage from '@/model/messageImageModel';
 import { MessageData } from '@/types/message';
 import moment from 'moment';
 import sequelize from '../config/mysql';
@@ -19,6 +20,21 @@ export const getMessage = catchAsyncController(async (req, res) => {
     where: {
       roomId,
     },
+    include: [
+      {
+        model: MessageImage,
+        as: 'messageImage',
+        foreignKey: 'imageId',
+        required: false,
+        attributes: [
+          'thumbnailUrl',
+          'blurHash',
+          'width',
+          'height',
+          'isExpired',
+        ],
+      },
+    ],
     order: [
       ['sendTime', 'DESC'],
       ['seq', 'DESC'], // sendTime 相同時以寫入順序穩定排序
@@ -35,7 +51,7 @@ export const getMessage = catchAsyncController(async (req, res) => {
 
   const formatDataTime = messages.map((message) => ({
     ...message.dataValues,
-    sendTime: +message.dataValues.sendTime,
+    sendTime: Math.ceil(+message.dataValues.sendTime / 1000),
   }));
 
   res.status(200).json({
@@ -87,7 +103,7 @@ export const setMessage = async ({
 
   const filterNeedDataForClient = filterNeedData.map((data) => ({
     ...data,
-    sendTime: moment(Number(data.sendTime) * 1000).unix(),
+    sendTime: moment(data.sendTime, 'YYYY-MM-DD HH:mm:ss').unix(),
   }));
 
   let friend: Awaited<ReturnType<typeof Friendship.findOne>> = null;

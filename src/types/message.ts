@@ -10,3 +10,5 @@ export interface MessageData {
   status?: MessageStatus;
   roomId: number;
 }
+
+export type MessageType = 'text' | 'image';
