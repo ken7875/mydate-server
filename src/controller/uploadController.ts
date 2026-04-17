@@ -348,7 +348,20 @@ export const uploadChunk = catchAsyncController(async (req, res) => {
   const receivedCount = await redis.scard(CHUNKS_KEY(uploadId));
 
   if (receivedCount === session.totalChunks) {
+    // 分散式鎖：確保並發情況下 finalizeUpload 只被執行一次
+    const lockKey = `upload:finalize:lock:${uploadId}`;
+    const acquired = await redis.set(lockKey, '1', 'EX', 60, 'NX');
+    if (!acquired) {
+      res.status(202).json({
+        status: 'success',
+        code: 202,
+        data: { uploadId },
+      });
+      return;
+    }
+
     const message = await finalizeUpload(uploadId, localId, session, filePath);
+    await redis.del(lockKey);
     res.status(200).json({
       status: 'success',
       code: 200,
