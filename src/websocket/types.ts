@@ -17,5 +17,4 @@ export type WebSocketMessageType =
   | 'closeVideo'
   | 'streamRoomStatus'
   | 'addRoom'
-  | 'deleteRoom'
-  ;
+  | 'deleteRoom';

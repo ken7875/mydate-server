@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
+import { pipeline } from 'stream/promises';
+// import { PassThrough } from 'stream';
 import path from 'path';
 import { catchAsyncController } from '@/utils/catchAsync';
 import AppError from '@/utils/appError';
@@ -9,46 +11,18 @@ import {
   UploadSession,
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE,
-  MAX_CHUNK_SIZE,
 } from '@/types/upload';
 import { processImage } from '@/services/imageProcessor';
 import MessageImage from '@/model/messageImageModel';
 import Message from '@/model/messageModel';
 import { WebSocketServer } from '@/server';
+import { PassThrough } from 'stream';
 const UPLOAD_SESSION_TTL_SECONDS = 86400;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const SESSION_KEY = (uploadId: string) => `upload:session:${uploadId}`;
-const CHUNKS_KEY = (uploadId: string) => `upload:chunks:${uploadId}`;
-// 追蹤每個 chunk 已接收的 byte 數，支援 sub-chunk 斷點續傳
-const CHUNK_PROGRESS_KEY = (uploadId: string) =>
-  `upload:chunk:progress:${uploadId}`;
-
-async function getSession(uploadId: string): Promise<UploadSession | null> {
-  const raw = await redis.hgetall(SESSION_KEY(uploadId));
-  if (!raw || Object.keys(raw).length === 0) return null;
-
-  return {
-    userId: raw.userId,
-    receiverId: raw.receiverId ?? '',
-    roomId: Number(raw.roomId ?? 0),
-    fileName: raw.fileName,
-    fileSize: Number(raw.fileSize),
-    mimeType: raw.mimeType,
-    checksum: raw.checksum,
-    status: raw.status as UploadSession['status'],
-    totalChunks: Number(raw.totalChunks),
-    receivedChunks: Number(raw.receivedChunks),
-    expiresAt: raw.expiresAt,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// finalizeUpload — called automatically when last chunk is received
-// ---------------------------------------------------------------------------
 // async function deleteAllUploadKeys() {
 //   let cursor = '0';
 //   do {
@@ -66,6 +40,31 @@ async function getSession(uploadId: string): Promise<UploadSession | null> {
 //   } while (cursor !== '0');
 // }
 // deleteAllUploadKeys();
+const SESSION_KEY = (uploadId: string) => `upload:session:${uploadId}`;
+
+async function getSession(uploadId: string): Promise<UploadSession | null> {
+  const raw = await redis.hgetall(SESSION_KEY(uploadId));
+  if (!raw || Object.keys(raw).length === 0) return null;
+
+  return {
+    userId: raw.userId,
+    receiverId: raw.receiverId ?? '',
+    roomId: Number(raw.roomId ?? 0),
+    fileName: raw.fileName,
+    fileSize: Number(raw.fileSize),
+    mimeType: raw.mimeType,
+    checksum: raw.checksum,
+    status: raw.status as UploadSession['status'],
+    receivedBytes: Number(raw.receivedBytes ?? 0),
+    expiresAt: raw.expiresAt,
+    thumbWidth: Number(raw.thumbWidth ?? 0),
+    thumbHeight: Number(raw.thumbHeight ?? 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// finalizeUpload — called automatically when all bytes are received
+// ---------------------------------------------------------------------------
 export async function finalizeUpload(
   uploadId: string,
   localId: string,
@@ -112,7 +111,12 @@ export async function finalizeUpload(
   // 2. Process image (convert, generate blurHash)
   let result;
   try {
-    result = await processImage(uploadId, filePath);
+    result = await processImage(
+      uploadId,
+      filePath,
+      session.thumbWidth,
+      session.thumbHeight,
+    );
   } catch {
     throw new AppError('PROCESSING_FAILED', 422);
   }
@@ -207,8 +211,16 @@ export async function finalizeUpload(
 // ---------------------------------------------------------------------------
 
 export const initUpload = catchAsyncController(async (req, res) => {
-  const { fileName, fileSize, mimeType, checksum, receiverId, roomId } =
-    req.body;
+  const {
+    fileName,
+    fileSize,
+    mimeType,
+    checksum,
+    receiverId,
+    roomId,
+    thumbWidth,
+    thumbHeight,
+  } = req.body;
 
   // 1. 驗證必填欄位
   if (
@@ -217,9 +229,21 @@ export const initUpload = catchAsyncController(async (req, res) => {
     !mimeType ||
     !checksum ||
     !receiverId ||
-    !roomId
+    !roomId ||
+    !thumbWidth ||
+    !thumbHeight
   ) {
     throw new AppError('MISSING_REQUIRED_FIELDS', 400);
+  }
+
+  // 1a. 驗證 thumbWidth / thumbHeight（正整數）
+  if (
+    !Number.isInteger(thumbWidth) ||
+    thumbWidth <= 0 ||
+    !Number.isInteger(thumbHeight) ||
+    thumbHeight <= 0
+  ) {
+    throw new AppError('INVALID_DIMENSIONS', 400);
   }
 
   // 2. 驗證 mimeType
@@ -232,15 +256,16 @@ export const initUpload = catchAsyncController(async (req, res) => {
     throw new AppError('INVALID_FILE_SIZE', 400);
   }
 
-  // 4. 驗證 checksum（64 位 hex）
+  // 4. 正規化 fileName，防止路徑穿越（e.g. ../../etc/passwd）
+  const safeFileName = path.basename(fileName);
+  if (!safeFileName) throw new AppError('INVALID_FILE_NAME', 400);
+
+  // 5. 驗證 checksum（64 位 hex）
   if (!/^[a-f0-9]{64}$/i.test(checksum)) {
     throw new AppError('INVALID_CHECKSUM', 400);
   }
 
-  // 5. 後端計算 totalChunks，確保與 MAX_CHUNK_SIZE 一致
-  const totalChunks = Math.ceil(fileSize / MAX_CHUNK_SIZE);
-
-  // 6. 產生 uploadId
+  // 5. 產生 uploadId
   const uploadId = crypto.randomUUID();
 
   const expiresAt = new Date(
@@ -248,21 +273,32 @@ export const initUpload = catchAsyncController(async (req, res) => {
   ).toISOString();
   const userId = req.user?.uuid ?? '';
 
-  // 7. 寫入 Redis
-  await redis.hset(`upload:session:${uploadId}`, {
+  // 6. 檢查用戶已上傳的照片總數是否達到上限
+  const uploadedCount = await MessageImage.count({
+    where: { userId, isExpired: false },
+  });
+  if (uploadedCount >= 5) {
+    throw new AppError('UPLOAD_LIMIT_EXCEEDED', 429);
+  }
+
+  // 7. 寫入 Redis（pipeline 批次執行，減少 round-trip）
+  const initPipeline = redis.pipeline();
+  initPipeline.hset(`upload:session:${uploadId}`, {
     userId,
     receiverId,
     roomId: String(roomId),
-    fileName,
+    fileName: safeFileName,
     fileSize: String(fileSize),
     mimeType,
     checksum,
     status: 'uploading',
-    totalChunks: String(totalChunks),
-    receivedChunks: '0',
+    receivedBytes: '0',
     expiresAt,
+    thumbWidth: String(thumbWidth),
+    thumbHeight: String(thumbHeight),
   });
-  await redis.expire(`upload:session:${uploadId}`, UPLOAD_SESSION_TTL_SECONDS);
+  initPipeline.expire(`upload:session:${uploadId}`, UPLOAD_SESSION_TTL_SECONDS);
+  await initPipeline.exec();
 
   // 8. 回傳 201
   res.status(201).json({
@@ -270,84 +306,115 @@ export const initUpload = catchAsyncController(async (req, res) => {
     code: 201,
     data: {
       uploadId,
-      totalChunks,
       expiresAt,
     },
   });
 });
 
 export const uploadChunk = catchAsyncController(async (req, res) => {
-  const { uploadId, localId, chunkIndex: chunkIndexParam } = req.params;
+  const { uploadId, localId } = req.params;
 
-  // 1. 從 Redis 取 session，不存在回 404
+  // 1. 從 Redis 取 session
   const session = await getSession(uploadId);
-  if (!session) {
-    throw new AppError('UPLOAD_NOT_FOUND', 404);
-  }
-
-  // 2. 若 status 為 'completed' 回 409
-  if (session.status === 'completed') {
+  if (!session) throw new AppError('UPLOAD_NOT_FOUND', 404);
+  if (session.status === 'completed')
     throw new AppError('UPLOAD_ALREADY_COMPLETED', 409);
-  }
 
-  // 3. 解析並驗證 chunkIndex
-  const chunkIndex = Number(chunkIndexParam);
+  // 2. 驗證 Content-Type
   if (
-    !Number.isInteger(chunkIndex) ||
-    chunkIndex < 0 ||
-    chunkIndex >= session.totalChunks
+    !(req.headers['content-type'] ?? '').includes('application/octet-stream')
   ) {
-    throw new AppError('INVALID_CHUNK_INDEX', 400);
+    throw new AppError('INVALID_CONTENT_TYPE', 415);
   }
 
-  // 4. 解析 Content-Range header（必填）
-  //    格式：Content-Range: bytes {start}-{end}/{chunkTotal}
+  // 3. 解析並驗證 Content-Range: bytes start-end/total
   const contentRange = req.headers['content-range'];
-  if (!contentRange) {
-    throw new AppError('MISSING_CONTENT_RANGE', 400);
-  }
+  if (!contentRange) throw new AppError('MISSING_CONTENT_RANGE', 400);
   const match = contentRange.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
-  if (!match) {
-    throw new AppError('INVALID_CONTENT_RANGE', 400);
-  }
+  if (!match) throw new AppError('INVALID_CONTENT_RANGE', 400);
+
   const start = Number(match[1]);
-  // const end = Number(match[2]);
-  // const total = Number(match[3]);
+  console.log(start, 'start');
+  const end = Number(match[2]);
+  const total = Number(match[3]);
 
-  const body = req.body as Buffer;
+  if (total !== session.fileSize)
+    throw new AppError('INVALID_CONTENT_RANGE', 400);
+  if (start !== session.receivedBytes)
+    throw new AppError('INVALID_RANGE_START', 409);
+  if (end >= total || start > end)
+    throw new AppError('INVALID_CONTENT_RANGE', 400);
 
+  // 4. 建立目錄與檔案（原子建立，避免並發覆蓋）
   const fileDir = path.join('public', 'messageImage', uploadId);
   const filePath = path.join(fileDir, session.fileName);
 
   await fsPromises.mkdir(fileDir, { recursive: true });
-  // 「建立一個全新的檔案，若已存在就報錯」，這個動作在 OS 層是原子的。
   try {
-    // O_CREAT | O_EXCL 確保只有第一個請求能建立檔案（原子操作，無 race condition）
-    // O_WRONLY 以唯寫模式開啟
-    // O_CREAT 檔案不存在時建立
-    // O_EXCL 若檔案已存在則直接失敗（拋出 EEXIST）
     const fh = await fsPromises.open(
       filePath,
       fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
     );
-    // 將檔案大小設定為 session.fileSize（例如 10MB）。此時檔案內容全為零，但磁碟空間已預先保留，後續任何 chunk 寫入任意 offset 都不會超出邊界。
+    // 預先分配完整檔案空間，確保任意 offset 寫入不越界
     await fh.truncate(session.fileSize);
     await fh.close();
   } catch (e: any) {
     if (e.code !== 'EEXIST') throw e;
   }
 
+  // 5. 串流寫入指定 offset
   const fileHandle = await fsPromises.open(filePath, 'r+');
+  const writeStream = fileHandle.createWriteStream({ start });
+  let pipelineError: unknown = null;
+
+  const monitor = new PassThrough();
+  let chunkCount = 0;
+  let monitoredBytes = 0;
+  monitor.on('data', (chunk: Buffer) => {
+    chunkCount++;
+    monitoredBytes += chunk.length;
+    console.log(
+      `[upload:${uploadId}] chunk #${chunkCount} ${chunk.length}B  cumulative ${monitoredBytes}B`,
+    );
+  });
+
+  const IDLE_TIMEOUT_MS = 10_000;
+  const onSocketTimeout = () => req.socket.destroy();
+  req.socket.setTimeout(IDLE_TIMEOUT_MS);
+  req.socket.once('timeout', onSocketTimeout);
+
   try {
-    await fileHandle.write(body as Uint8Array, 0, body.length, start);
+    await pipeline(req, monitor, writeStream);
+  } catch (err: any) {
+    pipelineError = err;
+    console.log(pipelineError, 'pe');
   } finally {
+    // 取消計時，防止 keep-alive socket 被下一個請求誤觸
+    req.socket.setTimeout(0);
+    req.socket.removeListener('timeout', onSocketTimeout);
     await fileHandle.close();
   }
 
-  await redis.sadd(CHUNKS_KEY(uploadId), String(chunkIndex));
-  const receivedCount = await redis.scard(CHUNKS_KEY(uploadId));
+  // req.complete 為 false：資料未完整送達就斷線
+  if (!req.complete) {
+    pipelineError = new Error('CLIENT_DISCONNECTED');
+  }
 
-  if (receivedCount === session.totalChunks) {
+  const newReceivedBytes = start + writeStream.bytesWritten;
+  console.log(newReceivedBytes, 'newReceivedBytes');
+
+  // 6. 無論是否斷線，都更新 Redis，保留斷點位置
+  await redis.hset(
+    SESSION_KEY(uploadId),
+    'receivedBytes',
+    String(newReceivedBytes),
+  );
+
+  // 前端已斷線：Redis 已更新，無法回應，直接結束
+  if (pipelineError) return;
+
+  // 7. 判斷是否傳輸完成
+  if (newReceivedBytes >= session.fileSize) {
     // 分散式鎖：確保並發情況下 finalizeUpload 只被執行一次
     const lockKey = `upload:finalize:lock:${uploadId}`;
     const acquired = await redis.set(lockKey, '1', 'EX', 60, 'NX');
@@ -360,8 +427,12 @@ export const uploadChunk = catchAsyncController(async (req, res) => {
       return;
     }
 
-    const message = await finalizeUpload(uploadId, localId, session, filePath);
-    await redis.del(lockKey);
+    let message;
+    try {
+      message = await finalizeUpload(uploadId, localId, session, filePath);
+    } finally {
+      await redis.del(lockKey);
+    }
     res.status(200).json({
       status: 'success',
       code: 200,
@@ -370,14 +441,13 @@ export const uploadChunk = catchAsyncController(async (req, res) => {
     return;
   }
 
-  // 未完成：回 206 Partial Content
+  // 8. 未完成：回 206，告知前端下次 Content-Range start 起點
   res.status(206).json({
     status: 'success',
     code: 206,
     data: {
       uploadId,
-      chunkIndex,
-      totalChunks: session.totalChunks,
+      nextStart: newReceivedBytes,
     },
   });
 });
@@ -391,20 +461,7 @@ export const getUploadStatus = catchAsyncController(async (req, res) => {
     throw new AppError('UPLOAD_NOT_FOUND', 404);
   }
 
-  // 2. 從 upload:chunks:{uploadId} Set 取已完整接收的 chunkIndex 清單
-  const rawChunkIndices = await redis.smembers(CHUNKS_KEY(uploadId));
-  const receivedChunkIndices = rawChunkIndices
-    .map(Number)
-    .sort((a, b) => a - b);
-
-  // 3. 取各 chunk 的 sub-chunk 進度（尚未完整接收的 chunk 已收到多少 bytes）
-  const rawProgress = await redis.hgetall(CHUNK_PROGRESS_KEY(uploadId));
-  const chunkProgress: Record<number, number> = {};
-  for (const [k, v] of Object.entries(rawProgress)) {
-    chunkProgress[Number(k)] = Number(v);
-  }
-
-  // 4. 回傳 200
+  // 2. 回傳 200，nextStart 為前端下次 Content-Range 的 start 起點
   res.status(200).json({
     status: 'success',
     code: 200,
@@ -412,10 +469,8 @@ export const getUploadStatus = catchAsyncController(async (req, res) => {
       uploadId,
       status: session.status,
       fileSize: session.fileSize,
-      totalChunks: session.totalChunks,
-      receivedChunks: session.receivedChunks,
-      receivedChunkIndices,
-      chunkProgress,
+      receivedBytes: session.receivedBytes,
+      nextStart: session.receivedBytes,
       expiresAt: session.expiresAt,
     },
   });
@@ -435,10 +490,8 @@ export const cancelUpload = catchAsyncController(async (req, res) => {
     throw new AppError('UPLOAD_ALREADY_COMPLETED', 409);
   }
 
-  // 3. 刪除 Redis keys（含 sub-chunk 進度）
+  // 3. 刪除 Redis session key
   await redis.del(SESSION_KEY(uploadId));
-  await redis.del(CHUNKS_KEY(uploadId));
-  await redis.del(CHUNK_PROGRESS_KEY(uploadId));
 
   // 4. 刪除上傳目錄（若存在）
   const chunkDir = path.join('public', 'messageImage', uploadId);

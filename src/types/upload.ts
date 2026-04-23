@@ -7,9 +7,10 @@ export interface UploadSession {
   mimeType: string;
   checksum: string;
   status: 'uploading' | 'completed' | 'cancelled';
-  totalChunks: number;
-  receivedChunks: number;
+  receivedBytes: number;
   expiresAt: string;
+  thumbWidth: number;
+  thumbHeight: number;
 }
 
 export const ALLOWED_MIME_TYPES = [
@@ -17,5 +18,5 @@ export const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
 ] as const;
-export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+export const MAX_FILE_SIZE = 20 * 1024 * 1024 * 1024; // 20MB
 export const MAX_CHUNK_SIZE = 2 * 1024 * 1024; // 2MB per chunk

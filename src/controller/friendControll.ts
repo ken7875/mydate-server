@@ -274,7 +274,7 @@ export const getFriends = catchAsyncController(
         ...userData,
         roomId: friend.dataValues.id,
         status: friend.dataValues.status,
-        avatars: userData.avatars.map((avatar: string) => avatar + '.jpeg'),
+        avatars: userData.avatars.map((avatar: string) => avatar),
       };
     });
 

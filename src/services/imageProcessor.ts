@@ -25,6 +25,8 @@ export interface ProcessedImageResult {
 export async function processImage(
   uploadId: string,
   filePath: string,
+  thumbWidth: number,
+  thumbHeight: number,
 ): Promise<ProcessedImageResult> {
   // 1. Read file from disk
   const fileBuffer = await fs.readFile(filePath);
@@ -36,23 +38,25 @@ export async function processImage(
   // 3. Convert to WebP and strip EXIF metadata (default sharp behaviour) → original.webp
   await sharp(fileBuffer).webp().toFile(filePath);
 
-  // 4. Generate thumbnail (max 400×400, preserve aspect ratio) → thumb.webp
-  await sharp(filePath)
-    .resize(400, 400, { fit: 'inside' })
-    .webp()
-    .toFile(thumbPath);
-
-  // 5. Get image dimensions (from original) and file size (from disk)
+  // 4. Get original dimensions and generate thumbnail → thumb.webp
   const metadata = await sharp(fileBuffer).metadata();
   const width = metadata.width ?? 0;
   const height = metadata.height ?? 0;
 
+  await sharp(filePath)
+    .resize(thumbWidth, thumbHeight, { fit: 'inside' })
+    .webp()
+    .toFile(thumbPath);
+
+  // 5. Get file size (from disk)
   const stat = await fs.stat(filePath);
   const fileSize = stat.size;
 
   // 取樣解析度（影響頻率分量的輸入品質）
   const BLURHASH_WIDTH = 94;
-  const BLURHASH_HEIGHT = Math.round(94 * (height / (width || 1)));
+  const origWidth = width || 1;
+  const origHeight = height || 1;
+  const BLURHASH_HEIGHT = Math.round(94 * (origHeight / origWidth));
   const clampedBlurHashHeight = Math.max(1, BLURHASH_HEIGHT);
 
   const { data: rawPixels, info: rawInfo } = await sharp(fileBuffer)

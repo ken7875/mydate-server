@@ -25,7 +25,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 app.use(cookieParser());
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '100kb', type: 'application/json' }));
 app.use(helmet());
 app.use('/api', router);
 app.use('/version', (req, res) => {

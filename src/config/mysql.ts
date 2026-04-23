@@ -8,10 +8,10 @@ const access: Options = {
   // port: Number(process.env.DB_PORT),
   dialect: 'mysql',
   pool: {
-    max: 10,     // 最多同時 10 條 DB 連線，超過的請求排隊等待
-    min: 2,      // 閒置時保留 2 條，避免冷啟動延遲
+    max: 10, // 最多同時 10 條 DB 連線，超過的請求排隊等待
+    min: 2, // 閒置時保留 2 條，避免冷啟動延遲
     acquire: 30000, // 等待連線的最長時間 (ms)，超過拋錯而非無限等待
-    idle: 10000,    // 連線閒置超過 10s 就釋放回 pool
+    idle: 10000, // 連線閒置超過 10s 就釋放回 pool
   },
   // logging: false,
   logging: (sql: string, timing?: number | any) => {
@@ -23,9 +23,9 @@ const access: Options = {
       .replace(/UPDATE/g, chalk.red('UPDATE'));
 
     // 2. 輸出格式化後的內容
-    console.log(
-      `${chalk.gray('[Sequelize]')} ${highlightSql} ${chalk.green(`(+${timing}ms)`)}`,
-    );
+    // console.log(
+    //   `${chalk.gray('[Sequelize]')} ${highlightSql} ${chalk.green(`(+${timing}ms)`)}`,
+    // );
   },
   benchmark: true, // 必須開啟此項，timing 參數才會有值
 };

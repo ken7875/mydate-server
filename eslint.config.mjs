@@ -10,6 +10,11 @@ export default [
     plugins: {
       prettier: prettierPlugin,
     },
+  },
+  pluginJs.configs.recommended,
+  ...tseslint.configs.recommended,
+  prettierConfig,
+  {
     rules: {
       'prettier/prettier': 'error',
       'spaced-comment': 'off',
@@ -28,9 +33,6 @@ export default [
       '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
-  pluginJs.configs.recommended,
-  ...tseslint.configs.recommended,
-  prettierConfig,
   {
     files: ['src/config/sequelize-config.js'],
     languageOptions: {

@@ -204,7 +204,7 @@ export const reseizePhoto = catchAsyncController(
       activeSlots.map(async ({ key, position }) => {
         const photo = files[key]![0];
         // 檔名使用 uploadId + position，重試時會覆蓋同一檔案
-        const fileName = `${uploadId}-${position}.jpeg`;
+        const fileName = `${uploadId}-${position}`;
 
         // sharp 圖片處理
         let buffer: Buffer;

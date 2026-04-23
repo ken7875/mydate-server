@@ -32,6 +32,7 @@ export const getMessage = catchAsyncController(async (req, res) => {
           'width',
           'height',
           'isExpired',
+          'originalUrl',
         ],
       },
     ],
@@ -258,8 +259,15 @@ export const getPreviewMessage = catchAsyncController(async (req, res) => {
   });
 });
 
-export const markAsRead = catchAsyncController(async (req, res) => {
-  const { roomId, sendTime } = req.body;
+export const markAsRead = async ({
+  roomId,
+  sendTime,
+  uuid,
+}: {
+  roomId: number;
+  sendTime: number;
+  uuid: string;
+}) => {
   // 2. 把比它早的訊息設為已讀（雙方對話）
   await Message.update(
     { isRead: true },
@@ -274,13 +282,13 @@ export const markAsRead = catchAsyncController(async (req, res) => {
     },
   );
 
-  res.status(200).json({
-    status: 'success',
-    message: 'success',
-    code: 200,
-    data: null,
+  WebSocketServer.sendToSpecifyUser({
+    uuid: [uuid],
+    type: 'chatRoom',
+    code: 'SUCCESS',
+    data: {},
   });
-});
+};
 
 export const getUnreadTotal = catchAsyncController(async (req, res) => {
   const userId = req.user.uuid;

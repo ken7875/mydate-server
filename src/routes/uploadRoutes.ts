@@ -13,14 +13,8 @@ import {
 
 const router = express.Router();
 
-router.post('/init', verifyToken, initUploadLimiter, initUpload);
-router.put(
-  '/:uploadId/:localId/chunks/:chunkIndex',
-  verifyToken,
-  chunkUploadLimiter,
-  express.raw({ type: 'application/octet-stream', limit: '2mb' }),
-  uploadChunk,
-);
+router.post('/init', verifyToken, initUpload);
+router.put('/:uploadId/:localId/chunk', verifyToken, uploadChunk);
 router.get('/:uploadId/status', verifyToken, getUploadStatus);
 router.delete('/:uploadId', verifyToken, cancelUpload);
 
