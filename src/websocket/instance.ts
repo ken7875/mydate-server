@@ -207,7 +207,7 @@ class WebsocketInstance {
         });
       }
     } catch (error) {
-      logger.warn({ error }, 'not valid websocket message');
+      logger.warn({ error, data: str }, 'not valid websocket message');
     }
   }
 

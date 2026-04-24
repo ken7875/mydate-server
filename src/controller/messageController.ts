@@ -11,6 +11,7 @@ import { WebSocketServer } from '@/server';
 import Friendship from '@/model/friendModal';
 import Users from '@/model/authModel';
 import { updateFriend } from '@/controller/friendControll';
+import logger from '@/utils/logger';
 
 export const getMessage = catchAsyncController(async (req, res) => {
   const { roomId, page = 1, pageSize = 100 } = req.query;
@@ -260,34 +261,41 @@ export const getPreviewMessage = catchAsyncController(async (req, res) => {
 });
 
 export const markAsRead = async ({
-  roomId,
-  sendTime,
+  data,
   uuid,
 }: {
-  roomId: number;
-  sendTime: number;
+  data: {
+    roomId: number;
+    sendTime: number;
+    friendId: string;
+  };
   uuid: string;
 }) => {
-  // 2. 把比它早的訊息設為已讀（雙方對話）
-  await Message.update(
-    { isRead: true },
-    {
-      where: {
-        roomId,
-        isRead: false,
-        sendTime: {
-          [Op.lte]: new Date(sendTime * 1000), // ✅ JS timestamp 轉 Date
+  const { sendTime, friendId } = data;
+  // // 2. 把比它早的訊息設為已讀（雙方對話）
+  try {
+    await Message.update(
+      { isRead: true },
+      {
+        where: {
+          receiverId: uuid,
+          isRead: false,
+          sendTime: {
+            [Op.lte]: new Date(sendTime * 1000), // ✅ JS timestamp 轉 Date
+          },
         },
       },
-    },
-  );
+    );
 
-  WebSocketServer.sendToSpecifyUser({
-    uuid: [uuid],
-    type: 'chatRoom',
-    code: 'SUCCESS',
-    data: {},
-  });
+    WebSocketServer.sendToSpecifyUser({
+      uuid: [uuid, friendId],
+      type: 'markAsRead',
+      code: 'SUCCESS',
+      data: {},
+    });
+  } catch (error) {
+    logger.error({ error }, 'error');
+  }
 };
 
 export const getUnreadTotal = catchAsyncController(async (req, res) => {
