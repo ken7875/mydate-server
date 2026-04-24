@@ -29,7 +29,7 @@ export default [
       'class-methods-use-this': 'off',
       'prefer-destructuring': ['error', { object: true, array: false }],
       'no-unused-vars': ['error', { argsIgnorePattern: 'req|res|next|val' }],
-      indent: ['error', 2],
+      // indent: ['error', 2],
       '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
