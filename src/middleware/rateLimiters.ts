@@ -13,7 +13,7 @@ const rateLimitedResponse = {
 
 export const defaultLomiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 5,
+  limit: 300,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator,
