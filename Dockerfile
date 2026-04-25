@@ -30,7 +30,6 @@ ENV NODE_ENV=${NODE_ENV}
 
 COPY package.json yarn.lock ./
 RUN yarn install --production --frozen-lockfile
-RUN yarn global add pm2
 COPY --from=build /usr/src/app/dist ./dist
 COPY --from=build /usr/src/app/public ./public
 
@@ -46,4 +45,4 @@ USER appuser
 # EXPOSE 3001
 # EXPOSE 3002
 # CMD ["node", "dist/server.js"]
-CMD ["pm2-runtime", "dist/server.js"]
+CMD ["node", "dist/server.js"]
