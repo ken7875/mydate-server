@@ -19,7 +19,7 @@ import {
 } from '@/websocket/subscriber';
 import { startCleanupJob } from '@/jobs/cleanupExpiredUploads';
 
-const port = 3001;
+const port = Number(process.env.PORT) || 3001;
 const streamPort = 3002;
 export const server = app.listen(port, '0.0.0.0', () => {
   console.log(`the server is listen on ${port}`);
