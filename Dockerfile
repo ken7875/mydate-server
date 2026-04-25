@@ -42,6 +42,7 @@ RUN chown -R appuser:appuser /usr/src/app
 # 切換到非 root 使用者
 USER appuser
 
+EXPOSE 8080
 # EXPOSE 3001
 # EXPOSE 3002
 # CMD ["node", "dist/server.js"]
