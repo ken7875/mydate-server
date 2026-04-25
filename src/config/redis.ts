@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 export const redis = new Redis({
   host: process.env.REDIS_HOST, // Redis server 地址
   port: 6379, // Redis 預設端口
-  password: process.env.REIS_HOST || '', // 如果有密碼，填在這裡
+  password: process.env.REIS_PASSWORD || '', // 如果有密碼，填在這裡
   db: 0, // 使用第 0 個資料庫
 });
 
