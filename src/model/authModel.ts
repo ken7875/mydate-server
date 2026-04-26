@@ -30,6 +30,9 @@ export class Users extends Model {
   declare weight: string;
   declare bloodType: 'A' | 'B' | 'AB' | 'O';
   declare city: string;
+  declare preferredGender: 0 | 1 | 2;
+  declare preferredAgeMin: number;
+  declare preferredAgeMax: number;
   declare isPasswordSign: boolean;
   declare userName: string;
   declare createdAt: CreationOptional<Date>;
@@ -135,6 +138,21 @@ Users.init(
     city: {
       type: DataTypes.STRING,
       allowNull: true,
+    },
+    preferredGender: {
+      type: DataTypes.TINYINT,
+      allowNull: false,
+      defaultValue: 2,
+    },
+    preferredAgeMin: {
+      type: DataTypes.TINYINT.UNSIGNED,
+      allowNull: false,
+      defaultValue: 18,
+    },
+    preferredAgeMax: {
+      type: DataTypes.TINYINT.UNSIGNED,
+      allowNull: false,
+      defaultValue: 99,
     },
   },
   {

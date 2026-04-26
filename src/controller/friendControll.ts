@@ -11,8 +11,23 @@ import { ValidationError, WhereOptions } from 'sequelize';
 import { FriendStatus } from '@/enums/friends';
 import { Op } from 'sequelize';
 import { WebSocketServer } from '@/server';
+import redis from '@/config/redis';
 
-// Friendship.truncate({ cascade: true });
+const removeFromRecommendCache = async (userUUID: string, targetId: string) => {
+  const keys = await redis.keys(`user:recommend:${userUUID}:*`);
+  if (keys.length === 0) return;
+  await Promise.all(
+    keys.map(async (key) => {
+      const cached = await redis.get(key);
+      if (!cached) return;
+      const ttl = await redis.ttl(key);
+      const list: { uuid: string }[] = JSON.parse(cached);
+      const updated = list.filter((u) => u.uuid !== targetId);
+      await redis.set(key, JSON.stringify(updated), 'EX', Math.max(ttl, 1));
+    }),
+  );
+};
+
 // 好友系統相關函數
 const createFriend = async ({
   userId,
@@ -69,6 +84,8 @@ export const inviteFriend = catchAsyncController(
         type: 'inviteFriend',
         uuid: [friendId],
       });
+
+      await removeFromRecommendCache(req.user?.uuid, friendId);
     } catch (error) {
       if (
         (error as ValidationError).name === 'SequelizeUniqueConstraintError'
@@ -104,6 +121,8 @@ export const dislikeUser = catchAsyncController(
       friendId,
       status: 2,
     });
+
+    await removeFromRecommendCache(req.user?.uuid, friendId);
 
     res.status(200).json({
       status: 'success',

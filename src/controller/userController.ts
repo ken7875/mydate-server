@@ -71,13 +71,15 @@ export const getUserByCondition = catchAsyncController(
 
     const [minAge, maxAge] = age as string[];
     const cacheKey = `user:recommend:${userUUID}:${gender}:${minAge}:${maxAge}:${limit}`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
+    const cached = (await redis.get(cacheKey)) || '[]';
+    const cachedList = JSON.parse(cached);
+
+    if (cachedList && cachedList.length >= 10) {
       return res.status(200).json({
         status: 'success',
         message: 'success',
         code: 200,
-        data: { list: JSON.parse(cached) },
+        data: { list: cachedList },
       });
     }
 
@@ -96,6 +98,7 @@ export const getUserByCondition = catchAsyncController(
       if (friend.dataValues.friendId !== userUUID)
         friendsUUID.add(friend.dataValues.friendId);
     });
+
     const usersTotal = await Users.count({
       where: {
         uuid: {
@@ -112,6 +115,7 @@ export const getUserByCondition = catchAsyncController(
       usersTotal <= Number(limit)
         ? 0
         : Math.floor(Math.random() * (usersTotal - Number(limit) + 1));
+
     const users = await Users.findAll({
       where: {
         uuid: {
@@ -123,17 +127,18 @@ export const getUserByCondition = catchAsyncController(
         },
       },
       offset,
-      limit: Number(limit), // 只取25筆
+      limit: Number(10 - (cachedList?.length || 0)), // 讓快取數值湊到10筆
     });
 
-    await redis.set(cacheKey, JSON.stringify(users), 'EX', 300);
+    const mergedList = [...cachedList, ...users];
+    await redis.set(cacheKey, JSON.stringify(mergedList), 'EX', 300);
 
     res.status(200).json({
       status: 'success',
       message: 'success',
       code: 200,
       data: {
-        list: users,
+        list: mergedList,
       },
     });
   },
