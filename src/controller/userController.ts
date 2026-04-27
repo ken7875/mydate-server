@@ -211,14 +211,14 @@ export const reseizePhoto = catchAsyncController(
         // 檔名使用 uploadId + position，重試時會覆蓋同一檔案
         const fileName = `${uploadId}-${position}`;
 
-        // sharp 圖片處理
-        let buffer: Buffer;
+        let jpegBuffer: Buffer;
+        let webpBuffer: Buffer;
         try {
-          buffer = await sharp(photo.buffer)
-            .resize(500, 750)
-            .toFormat('jpeg')
-            .jpeg({ quality: 90 })
-            .toBuffer();
+          const source = sharp(photo.buffer).resize(500, 750);
+          [jpegBuffer, webpBuffer] = await Promise.all([
+            source.clone().toFormat('jpeg').jpeg({ quality: 90 }).toBuffer(),
+            source.clone().toFormat('webp').webp({ quality: 85 }).toBuffer(),
+          ]);
         } catch {
           throw new AppError(
             `photo${position + 1} 圖片處理失敗，請確認檔案是否損壞`,
@@ -227,9 +227,12 @@ export const reseizePhoto = catchAsyncController(
         }
 
         try {
-          const url = await saveLocalFile(buffer, fileName);
-          req.body.images.push({ position, url });
-          return { position, url };
+          const [jpegUrl, webpUrl] = await Promise.all([
+            saveLocalFile(jpegBuffer, `${fileName}.jpeg`),
+            saveLocalFile(webpBuffer, `${fileName}.webp`),
+          ]);
+          req.body.images.push({ position, url: webpUrl, fallbackUrl: jpegUrl });
+          return { position, url: webpUrl, fallbackUrl: jpegUrl };
         } catch (err) {
           console.log(err, 'err');
           throw new AppError('圖片上傳失敗，請稍後重試', 502);
@@ -264,6 +267,7 @@ export const saveAvatars = catchAsyncController(
     for (const { position, url } of req.body.images as {
       position: number;
       url: string;
+      fallbackUrl: string;
     }[]) {
       avatars[position] = url;
     }
@@ -274,7 +278,10 @@ export const saveAvatars = catchAsyncController(
       status: 'success',
       message: 'set avatars success',
       avatarUrl: req.body.images.map(
-        ({ url }: { position: number; url: string }) => url,
+        ({ url, fallbackUrl }: { position: number; url: string; fallbackUrl: string }) => ({
+          webp: url,
+          jpeg: fallbackUrl,
+        }),
       ),
     });
   },
