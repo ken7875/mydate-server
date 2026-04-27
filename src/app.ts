@@ -10,7 +10,7 @@ import { defaultLomiter } from '@/middleware/rateLimiters';
 const corsConfig =
   process.env.NODE_ENV === 'production'
     ? {
-        origin: [process.env.FRONT_END_HOST as string, 'http://0.0.0.0:3000'],
+        origin: [process.env.FRONTEND_HOST as string, 'http://0.0.0.0:3000'],
       }
     : {
         origin: '*',

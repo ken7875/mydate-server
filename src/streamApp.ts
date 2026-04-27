@@ -14,12 +14,12 @@ const app = express();
 const corsConfig =
   process.env.NODE_ENV === 'production'
     ? {
-        origin: [process.env.FRONT_END_HOST as string, 'http://0.0.0.0:3000'],
+        origin: [process.env.FRONTEND_HOST as string, 'http://0.0.0.0:3000'],
         // credentials: true,
       }
     : {
         origin: '*',
-        // origin: [process.env.FRONT_END_HOST as string],
+        // origin: [process.env.FRONTEND_HOST as string],
         // credentials: true,
       };
 app.use(cors(corsConfig));
