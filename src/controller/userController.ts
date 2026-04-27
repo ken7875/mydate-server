@@ -99,35 +99,31 @@ export const getUserByCondition = catchAsyncController(
         friendsUUID.add(friend.dataValues.friendId);
     });
 
+    const cachedUUIDs = cachedList.map((u: { uuid: string }) => u.uuid);
+    const excludeUUIDs = [...Array.from(friendsUUID), userUUID, ...cachedUUIDs];
+    const needCount = 10 - (cachedList?.length || 0);
+
     const usersTotal = await Users.count({
       where: {
-        uuid: {
-          [Op.notIn]: Array.from(friendsUUID).concat(userUUID),
-        },
+        uuid: { [Op.notIn]: excludeUUIDs },
         gender,
-        age: {
-          [Op.between]: [Number(minAge), Number(maxAge)],
-        },
+        age: { [Op.between]: [Number(minAge), Number(maxAge)] },
       },
     });
 
     const offset =
-      usersTotal <= Number(limit)
+      usersTotal <= needCount
         ? 0
-        : Math.floor(Math.random() * (usersTotal - Number(limit) + 1));
+        : Math.floor(Math.random() * (usersTotal - needCount + 1));
 
     const users = await Users.findAll({
       where: {
-        uuid: {
-          [Op.notIn]: Array.from(friendsUUID).concat(userUUID),
-        },
+        uuid: { [Op.notIn]: excludeUUIDs },
         gender,
-        age: {
-          [Op.between]: [Number(minAge), Number(maxAge)],
-        },
+        age: { [Op.between]: [Number(minAge), Number(maxAge)] },
       },
       offset,
-      limit: Number(10 - (cachedList?.length || 0)), // 讓快取數值湊到10筆
+      limit: needCount,
     });
 
     const mergedList = [...cachedList, ...users];
@@ -231,7 +227,11 @@ export const reseizePhoto = catchAsyncController(
             saveLocalFile(jpegBuffer, `${fileName}.jpeg`),
             saveLocalFile(webpBuffer, `${fileName}.webp`),
           ]);
-          req.body.images.push({ position, url: webpUrl, fallbackUrl: jpegUrl });
+          req.body.images.push({
+            position,
+            url: webpUrl,
+            fallbackUrl: jpegUrl,
+          });
           return { position, url: webpUrl, fallbackUrl: jpegUrl };
         } catch (err) {
           console.log(err, 'err');
@@ -278,7 +278,14 @@ export const saveAvatars = catchAsyncController(
       status: 'success',
       message: 'set avatars success',
       avatarUrl: req.body.images.map(
-        ({ url, fallbackUrl }: { position: number; url: string; fallbackUrl: string }) => ({
+        ({
+          url,
+          fallbackUrl,
+        }: {
+          position: number;
+          url: string;
+          fallbackUrl: string;
+        }) => ({
           webp: url,
           jpeg: fallbackUrl,
         }),

@@ -85,7 +85,10 @@ export const inviteFriend = catchAsyncController(
         uuid: [friendId],
       });
 
-      await removeFromRecommendCache(req.user?.uuid, friendId);
+      await Promise.all([
+        removeFromRecommendCache(req.user?.uuid, friendId),
+        removeFromRecommendCache(friendId, req.user?.uuid),
+      ]);
     } catch (error) {
       if (
         (error as ValidationError).name === 'SequelizeUniqueConstraintError'
