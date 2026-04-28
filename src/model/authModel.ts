@@ -72,11 +72,11 @@ Users.init(
     },
     gender: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
     age: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
     // forWhat: {
     //   type: DataTypes.STRING,
@@ -104,7 +104,7 @@ Users.init(
     },
     description: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
         len: [0, 150],
       },
