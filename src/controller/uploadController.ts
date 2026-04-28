@@ -11,6 +11,7 @@ import {
   UploadSession,
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE,
+  MAX_FILE_USER_CAN_UPLOAD,
 } from '@/types/upload';
 import { processImage } from '@/services/imageProcessor';
 import MessageImage from '@/model/messageImageModel';
@@ -277,7 +278,7 @@ export const initUpload = catchAsyncController(async (req, res) => {
   const uploadedCount = await MessageImage.count({
     where: { userId, isExpired: false },
   });
-  if (uploadedCount >= 5) {
+  if (uploadedCount >= MAX_FILE_USER_CAN_UPLOAD) {
     throw new AppError('UPLOAD_LIMIT_EXCEEDED', 429);
   }
 
